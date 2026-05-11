@@ -15,7 +15,7 @@ Deploy Byaan for your team on your own server with multi-user authentication, in
 
 ```bash
 # One-command install
-curl -fsSL https://byaan.ai/docker/install.sh | bash
+curl -fsSL https://downloads.byaan.ai/docker/install.sh | bash
 
 # Navigate to the created directory
 cd byaan

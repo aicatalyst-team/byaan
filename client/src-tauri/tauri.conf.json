@@ -58,7 +58,7 @@
     "updater": {
       "pubkey": "",
       "endpoints": [
-        "https://byaan.ai/stable/latest.json"
+        "https://downloads.byaan.ai/stable/latest.json"
       ]
     },
     "deep-link": {

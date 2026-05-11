@@ -99,7 +99,7 @@ const getNotebookShareUrl = (shareId: string): string => `${NOTEBOOK_SHARE_BASE_
 // Extract UUID from a share URL or return the input if it's already a UUID
 // Supports formats:
 // - https://www.byaan.ai/n/{uuid}
-// - https://byaan.ai/n/{uuid}
+// - https://downloads.byaan.ai/n/{uuid}
 // - byaan.ai/n/{uuid}
 // - Just the UUID itself
 const extractShareId = (input: string): string => {

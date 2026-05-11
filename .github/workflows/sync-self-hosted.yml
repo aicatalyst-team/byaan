@@ -51,4 +51,4 @@ jobs:
 
           echo ""
           echo "=== Install Command ==="
-          echo "curl -fsSL https://byaan.ai/docker/install.sh | bash"
+          echo "curl -fsSL https://downloads.byaan.ai/docker/install.sh | bash"
