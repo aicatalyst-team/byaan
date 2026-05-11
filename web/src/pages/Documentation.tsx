@@ -25,7 +25,7 @@ import {
 const GITHUB_URL = "https://github.com/byaan-ai/byaan";
 const SELF_HOST_README = "https://github.com/byaan-ai/byaan/blob/main/docs/self-hosted/README.md";
 const INSTALL_CMD =
-  "curl -fsSL https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/install.sh | bash";
+  "curl -fsSL https://byaan.ai/docker/install.sh | bash";
 
 const quickStartSteps = [
   "Download Byaan for macOS.",

@@ -72,7 +72,7 @@ const faqs: { q: string; a: JSX.Element }[] = [
     q: "How do I self-host Byaan for my team?",
     a: (
       <>
-        One line: <code>curl -fsSL https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/install.sh | bash</code>. The installer drops a <code>start.sh</code> and <code>.env</code> in a <code>byaan</code> directory. Set your admin email, password, and org name in <code>.env</code>, then run <code>./start.sh</code>. PostgreSQL, backend, frontend, and Caddy ship in a single container — you're live on port 8080 in five minutes. Set <code>DOMAIN</code> for automatic HTTPS via Let's Encrypt.
+        One line: <code>curl -fsSL https://byaan.ai/docker/install.sh | bash</code>. The installer drops a <code>start.sh</code> and <code>.env</code> in a <code>byaan</code> directory. Set your admin email, password, and org name in <code>.env</code>, then run <code>./start.sh</code>. PostgreSQL, backend, frontend, and Caddy ship in a single container — you're live on port 8080 in five minutes. Set <code>DOMAIN</code> for automatic HTTPS via Let's Encrypt.
       </>
     ),
   },

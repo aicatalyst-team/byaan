@@ -20,7 +20,7 @@ ENV_FILE_RUNTIME=""
 
 # State tracking for blue-green deployment
 STATE_FILE="$SCRIPT_DIR/.byaan-state"
-MANIFEST_URL="https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/docker-manifest.json"
+MANIFEST_URL="https://byaan.ai/docker/docker-manifest.json"
 BACKUP_DIR="$SCRIPT_DIR/backups"
 
 print_info() { echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')] $1${NC}"; }
@@ -302,7 +302,7 @@ load_env() {
         print_error "Error: .env file not found"
         echo ""
         print_info "Download the example .env file:"
-        echo "  curl -fsSL https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/env.example -o .env"
+        echo "  curl -fsSL https://byaan.ai/docker/env.example -o .env"
         echo ""
         print_info "Or create one manually:"
         echo ""
@@ -863,7 +863,7 @@ remove() {
 
 # Sync start.sh from remote
 sync_script() {
-    SCRIPT_URL="https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/start.sh"
+    SCRIPT_URL="https://byaan.ai/docker/start.sh"
     SCRIPT_PATH="$SCRIPT_DIR/start.sh"
 
     print_info "Fetching latest start.sh..."

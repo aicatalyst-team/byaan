@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 
 const DOWNLOAD_API_URL =
-  "https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/stable/download.json";
+  "https://byaan.ai/stable/download.json";
 
 const FALLBACK_APPLE_URL =
-  "https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/stable/arm64/Byaan.dmg";
+  "https://byaan.ai/stable/arm64/Byaan.dmg";
 const FALLBACK_INTEL_URL =
-  "https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/stable/x64/Byaan.dmg";
+  "https://byaan.ai/stable/x64/Byaan.dmg";
 
 interface DownloadData {
   version: string;
