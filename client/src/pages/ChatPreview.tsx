@@ -905,6 +905,12 @@ export default function ChatPreview() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isPreviewOpen, clearStoredPreviewIfCurrent])
 
+  useEffect(() => {
+    if (availableVersions.length > 1 && !userClosedPreviewRef.current) {
+      handleOpenPreview()
+    }
+  }, [availableVersions])
+
   const handleClosePreview = useCallback(() => {
     setIsPreviewOpen(false)
     userClosedPreviewRef.current = true
