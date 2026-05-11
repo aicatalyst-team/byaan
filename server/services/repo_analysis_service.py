@@ -1,0 +1,688 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from dataclasses import dataclass
+from uuid import UUID
+
+from server.db.session import AsyncSessionFactory
+from server.models.custom_skill import CustomSkill
+from server.repositories.custom_skill import CustomSkillRepository
+from server.repositories.github_repository import GitHubRepoRepository
+from server.services import github_service
+from server.services.completion_service import CompletionService
+from server.services.unified_agent import is_using_claude_code_auth
+from server.utils.custom_logger import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class AnalysisProgress:
+    message: str = ""
+    step: int = 0
+    total_steps: int = 5
+    files_analyzed: int = 0
+    total_files: int = 0
+
+
+_analysis_progress: dict[str, AnalysisProgress] = {}
+
+
+def _update_progress(
+    repo_id: str,
+    message: str,
+    step: int,
+    files_analyzed: int = 0,
+    total_files: int = 0,
+) -> None:
+    _analysis_progress[repo_id] = AnalysisProgress(
+        message=message,
+        step=step,
+        total_steps=5,
+        files_analyzed=files_analyzed,
+        total_files=total_files,
+    )
+
+
+def _clear_progress(repo_id: str) -> None:
+    _analysis_progress.pop(repo_id, None)
+
+
+def get_analysis_progress(repo_id: str) -> AnalysisProgress | None:
+    return _analysis_progress.get(repo_id)
+
+
+SKIP_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".svg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".mp3",
+    ".mp4",
+    ".wav",
+    ".avi",
+    ".mov",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".bz2",
+    ".7z",
+    ".pyc",
+    ".pyo",
+    ".class",
+    ".o",
+    ".so",
+    ".dll",
+    ".exe",
+    ".bin",
+    ".dat",
+    ".lock",
+    ".min.js",
+    ".min.css",
+    ".map",
+}
+
+SKIP_DIRS = {"node_modules/", "vendor/", ".git/", "dist/", "build/", "__pycache__/", ".venv/", "venv/"}
+
+MAX_FILES_PER_SKILL = 50
+MAX_CHARS_PER_SKILL = 100_000
+
+PRIORITY_FILES = [
+    "README.md",
+    "readme.md",
+    "package.json",
+    "pyproject.toml",
+    "Cargo.toml",
+    "go.mod",
+    "Dockerfile",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+]
+
+PRIORITY_PATTERNS = [
+    "main.py",
+    "index.ts",
+    "index.js",
+    "app.py",
+    "manage.py",
+    "src/main.",
+    "src/app.",
+    "src/index.",
+]
+
+CONFIG_PATTERNS = [
+    "tsconfig.json",
+    "ruff.toml",
+    ".eslintrc",
+    "webpack.config.",
+    "vite.config.",
+    "jest.config.",
+    "pytest.ini",
+    "setup.cfg",
+    "setup.py",
+]
+
+DATA_PATTERNS = ["model", "schema", "migration", "prisma/schema.prisma", "alembic.ini"]
+
+CI_PATTERNS = [".github/workflows/"]
+
+TEST_PATTERNS = ["test", "spec", "__tests__"]
+
+
+def _should_skip(path: str) -> bool:
+    for d in SKIP_DIRS:
+        if d in path:
+            return True
+    for ext in SKIP_EXTENSIONS:
+        if path.endswith(ext):
+            return True
+    return False
+
+
+def _score_file(path: str, focus_boost: list[str] | None = None) -> int:
+    lower = path.lower()
+    basename = path.rsplit("/", 1)[-1] if "/" in path else path
+
+    if focus_boost:
+        for pattern in focus_boost:
+            if pattern.lower() in lower:
+                return 95
+
+    if basename in PRIORITY_FILES:
+        return 100
+    for p in PRIORITY_PATTERNS:
+        if p in lower:
+            return 90
+    for p in CI_PATTERNS:
+        if p in lower:
+            return 80
+    for p in CONFIG_PATTERNS:
+        if p.lower() in lower:
+            return 70
+    for p in DATA_PATTERNS:
+        if p in lower:
+            return 60
+    for p in TEST_PATTERNS:
+        if p in lower:
+            return 40
+    return 10
+
+
+def _get_blob_paths(tree: list[dict]) -> list[str]:
+    return [item["path"] for item in tree if item.get("type") == "blob" and not _should_skip(item["path"])]
+
+
+def _select_key_files(blob_paths: list[str], focus_boost: list[str] | None = None) -> list[str]:
+    scored = sorted(blob_paths, key=lambda p: (-_score_file(p, focus_boost), p))
+    return scored[:MAX_FILES_PER_SKILL]
+
+
+SKILL_PROMPTS = {
+    "codebase": {
+        "name": "Codebase Overview",
+        "system": (
+            "You are writing a skill document that an AI agent will consume to answer user questions. "
+            "Write structured markdown optimized for machine parsing, not human reading.\n\n"
+            "Target length: 200-400 lines. Be dense and precise — no filler, no introductions, no conclusions.\n\n"
+            "Start with:\n"
+            "## When To Use This Skill\n"
+            "List trigger terms: architecture, tech stack, project structure, conventions, "
+            "build system, testing setup, entry points, directory layout, dependencies.\n\n"
+            "Then cover:\n"
+            "1. **Project Overview** — What it does, who it's for, core value prop (3-5 bullets)\n"
+            "2. **Tech Stack** — Languages, frameworks, key deps with versions (bullet list)\n"
+            "3. **Architecture** — Directory structure, how components connect (cite exact paths)\n"
+            "4. **Key Entry Points** — Main files, startup flow, request lifecycle (cite paths)\n"
+            "5. **Coding Conventions** — Naming, formatting, import style, error handling (with examples)\n"
+            "6. **Testing** — Framework, structure, how to run tests (cite config files)\n"
+            "7. **Build & Deploy** — Build tools, CI/CD, deployment config (cite paths)\n\n"
+            "Rules:\n"
+            "- Use bullet points, not paragraphs\n"
+            "- Always cite exact file paths (e.g., `src/main.ts`)\n"
+            "- No speculation — if information is missing, say so\n"
+            "- No generic advice — only facts from the codebase"
+        ),
+        "user_prompt": (
+            "Analyze the provided codebase files and produce a Codebase Overview skill document. "
+            "Cite exact file paths for every claim. Use bullets, not paragraphs. "
+            "Acknowledge gaps instead of speculating. Target 200-400 lines."
+        ),
+        "focus": ["README", "config", "entry", "main", "app", "index", "src/"],
+    },
+    "data_layer": {
+        "name": "Data Layer",
+        "system": (
+            "You are writing a skill document that an AI agent will consume to answer questions about "
+            "database models, schemas, migrations, and data access patterns. "
+            "Write structured markdown optimized for machine parsing.\n\n"
+            "Target length: 200-400 lines. Be dense and precise — no filler.\n\n"
+            "Start with:\n"
+            "## When To Use This Skill\n"
+            "List trigger terms: database models, schemas, migrations, relationships, "
+            "data access, ORM config, foreign keys, indexes, repositories, data flow.\n\n"
+            "Then cover:\n"
+            "1. **Database Models** — Use compact format per model:\n"
+            "   `### ModelName (path/to/file.py)` → `Table: table_name` → `Fields:` bullet list\n"
+            "2. **Relationships** — FK references, join tables, one-to-many / many-to-many (cite models)\n"
+            "3. **Schemas & Serialization** — Request/response schemas, validation rules (cite files)\n"
+            "4. **Data Access Layer** — Repository/DAO patterns, query patterns (cite files)\n"
+            "5. **Migrations** — Strategy, tools, how schema changes are managed (cite config)\n"
+            "6. **ORM Configuration** — Setup, session management, connection pooling (cite files)\n"
+            "7. **Indexes & Constraints** — Indexes, unique constraints, check constraints\n\n"
+            "Rules:\n"
+            "- Use bullet points, not paragraphs\n"
+            "- Always cite exact file paths\n"
+            "- No speculation — if information is missing, say so\n"
+            "- No generic advice — only facts from the codebase"
+        ),
+        "user_prompt": (
+            "Analyze the provided codebase files and produce a Data Layer skill document. "
+            "Cite exact file paths for every claim. Use the compact model format specified. "
+            "Acknowledge gaps instead of speculating. Target 200-400 lines."
+        ),
+        "focus": ["model", "schema", "migration", "orm", "repository", "entity", "table", "database", "prisma"],
+    },
+}
+
+
+async def analyze_repository(
+    repo_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    llm_connection_id: str,
+    github_token: str,
+    repo_full_name: str,
+    default_branch: str,
+) -> None:
+    async with AsyncSessionFactory() as session:
+        repo_repo = GitHubRepoRepository(session)
+
+        rid = str(repo_id)
+        try:
+            await repo_repo.update_analysis_status(repo_id, "analyzing")
+            _update_progress(rid, "Fetching repository metadata...", 1)
+
+            owner, repo_name = repo_full_name.split("/", 1)
+
+            languages, sha, tree = await asyncio.gather(
+                github_service.get_repo_languages(github_token, owner, repo_name),
+                github_service.get_latest_commit_sha(github_token, owner, repo_name, default_branch),
+                github_service.get_repo_tree(github_token, owner, repo_name, default_branch),
+            )
+
+            blob_paths = _get_blob_paths(tree)
+            _update_progress(rid, f"Scanning {len(blob_paths)} files...", 2, total_files=len(blob_paths))
+
+            skill_file_lists: dict[str, list[str]] = {}
+            for skill_type, config in SKILL_PROMPTS.items():
+                skill_file_lists[skill_type] = _select_key_files(blob_paths, focus_boost=config.get("focus"))
+
+            all_paths: list[str] = list(dict.fromkeys(path for files in skill_file_lists.values() for path in files))
+
+            file_contents: dict[str, str] = {}
+            total_chars = 0
+            for i, path in enumerate(all_paths):
+                if total_chars >= MAX_CHARS_PER_SKILL * len(SKILL_PROMPTS):
+                    break
+                content = await github_service.get_file_content(github_token, owner, repo_name, path, ref=sha)
+                if content:
+                    file_contents[path] = content
+                    total_chars += len(content)
+                if (i + 1) % 5 == 0 or i + 1 == len(all_paths):
+                    _update_progress(
+                        rid, f"Reading file contents ({i + 1}/{len(all_paths)})...", 3, i + 1, len(all_paths)
+                    )
+
+            file_tree_str = "\n".join(blob_paths)
+
+            use_claude_sdk = await is_using_claude_code_auth(str(llm_connection_id), session)
+
+            _update_progress(rid, "Generating skills with AI...", 4, len(all_paths), len(all_paths))
+
+            tasks = []
+            for skill_type, config in SKILL_PROMPTS.items():
+                skill_contents = _build_skill_contents(skill_file_lists[skill_type], file_contents)
+                context_block = _build_context_block(skill_contents, file_tree_str, languages)
+                prompt = f"{context_block}\n\n{config['user_prompt']}"
+
+                tasks.append(
+                    _generate_skill(
+                        skill_type=skill_type,
+                        skill_name=config["name"],
+                        system_prompt=config["system"],
+                        prompt=prompt,
+                        llm_connection_id=llm_connection_id,
+                        repo_id=repo_id,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        use_claude_sdk=use_claude_sdk,
+                        repo_full_name=repo_full_name,
+                        languages=languages,
+                    )
+                )
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            _update_progress(rid, "Finalizing analysis...", 5)
+
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    skill_type = list(SKILL_PROMPTS.keys())[i]
+                    logger.error(f"[ANALYSIS] Skill {skill_type} failed: {result}")
+
+            await repo_repo.update_analysis_status(repo_id, "completed", sha=sha, language_breakdown=languages)
+            _clear_progress(rid)
+            logger.info(f"[ANALYSIS] Completed for {repo_full_name}")
+
+        except asyncio.CancelledError:
+            logger.info(f"[ANALYSIS] Cancelled for {repo_full_name}")
+            await repo_repo.update_analysis_status(repo_id, "cancelled")
+            _clear_progress(rid)
+        except Exception as e:
+            logger.error(f"[ANALYSIS] Failed for {repo_full_name}: {e}", exc_info=True)
+            await repo_repo.update_analysis_status(repo_id, "failed", error=str(e))
+            _clear_progress(rid)
+
+
+async def _generate_skill(
+    skill_type: str,
+    skill_name: str,
+    system_prompt: str,
+    prompt: str,
+    llm_connection_id: str,
+    repo_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    use_claude_sdk: bool,
+    repo_full_name: str,
+    languages: dict,
+) -> None:
+    async with AsyncSessionFactory() as skill_session:
+        skill_repo = CustomSkillRepository(skill_session)
+        content = await CompletionService.complete(
+            prompt=prompt,
+            llm_connection_id=llm_connection_id,
+            session=skill_session,
+            system_prompt=system_prompt,
+            use_claude_sdk=use_claude_sdk,
+        )
+        if not content:
+            raise ValueError(f"LLM returned empty content for skill {skill_type}")
+
+        if skill_type == "codebase":
+            description = (
+                f"Use when asked about {repo_full_name} architecture, tech stack, "
+                f"project structure, conventions, build, testing, or entry points."
+            )
+        elif skill_type == "data_layer":
+            description = (
+                f"Use when asked about {repo_full_name} database models, schemas, "
+                f"migrations, relationships, data access, or ORM config."
+            )
+        else:
+            lang_list = ", ".join(list(languages.keys())[:3]) if languages else ""
+            description = f"{skill_name} for {repo_full_name}"
+            if lang_list:
+                description += f" ({lang_list})"
+        description = description[:500]
+
+        await skill_repo.upsert_github_skill(
+            tenant_id=tenant_id,
+            created_by=user_id,
+            github_repo_id=repo_id,
+            github_analysis_type=skill_type,
+            name=skill_name,
+            description=description,
+            instructions=content,
+        )
+
+
+def _build_skill_contents(skill_paths: list[str], all_contents: dict[str, str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    total = 0
+    for path in skill_paths:
+        if path not in all_contents:
+            continue
+        content = all_contents[path]
+        if total + len(content) > MAX_CHARS_PER_SKILL:
+            break
+        result[path] = content
+        total += len(content)
+    return result
+
+
+def _build_context_block(file_contents: dict[str, str], file_tree: str, languages: dict) -> str:
+    parts = [f"## Languages\n{json.dumps(languages, indent=2)}", f"## File Tree\n```\n{file_tree}\n```"]
+    for path, content in file_contents.items():
+        parts.append(f"## {path}\n```\n{content}\n```")
+    return "\n\n".join(parts)
+
+
+async def analyze_local_repository(
+    repo_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    llm_connection_id: str,
+    local_path: str,
+    repo_name: str,
+) -> None:
+    from server.services.local_repo_service import detect_local_languages, get_local_file_content, get_local_file_tree
+
+    rid = str(repo_id)
+    async with AsyncSessionFactory() as session:
+        repo_repo = GitHubRepoRepository(session)
+
+        try:
+            await repo_repo.update_analysis_status(repo_id, "analyzing")
+            _update_progress(rid, "Scanning local file tree...", 1)
+
+            tree = await get_local_file_tree(local_path)
+            languages = detect_local_languages(tree)
+            blob_paths = _get_blob_paths(tree)
+            _update_progress(
+                rid,
+                f"Found {len(blob_paths)} files across {len(languages)} languages...",
+                2,
+                total_files=len(blob_paths),
+            )
+
+            skill_file_lists: dict[str, list[str]] = {}
+            for skill_type, config in SKILL_PROMPTS.items():
+                skill_file_lists[skill_type] = _select_key_files(blob_paths, focus_boost=config.get("focus"))
+
+            all_paths: list[str] = list(dict.fromkeys(path for files in skill_file_lists.values() for path in files))
+
+            file_contents: dict[str, str] = {}
+            total_chars = 0
+            for i, path in enumerate(all_paths):
+                if total_chars >= MAX_CHARS_PER_SKILL * len(SKILL_PROMPTS):
+                    break
+                content = await get_local_file_content(local_path, path)
+                if content:
+                    file_contents[path] = content
+                    total_chars += len(content)
+                if (i + 1) % 5 == 0 or i + 1 == len(all_paths):
+                    _update_progress(
+                        rid, f"Reading file contents ({i + 1}/{len(all_paths)})...", 3, i + 1, len(all_paths)
+                    )
+
+            file_tree_str = "\n".join(blob_paths)
+
+            use_claude_sdk = await is_using_claude_code_auth(str(llm_connection_id), session)
+
+            _update_progress(rid, "Generating skills with AI...", 4, len(all_paths), len(all_paths))
+
+            tasks = []
+            for skill_type, config in SKILL_PROMPTS.items():
+                skill_contents = _build_skill_contents(skill_file_lists[skill_type], file_contents)
+                context_block = _build_context_block(skill_contents, file_tree_str, languages)
+                prompt = f"{context_block}\n\n{config['user_prompt']}"
+
+                tasks.append(
+                    _generate_skill(
+                        skill_type=skill_type,
+                        skill_name=config["name"],
+                        system_prompt=config["system"],
+                        prompt=prompt,
+                        llm_connection_id=llm_connection_id,
+                        repo_id=repo_id,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        use_claude_sdk=use_claude_sdk,
+                        repo_full_name=repo_name,
+                        languages=languages,
+                    )
+                )
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            _update_progress(rid, "Finalizing analysis...", 5)
+
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    skill_type = list(SKILL_PROMPTS.keys())[i]
+                    logger.error(f"[ANALYSIS] Local skill {skill_type} failed: {result}")
+
+            await repo_repo.update_analysis_status(repo_id, "completed", language_breakdown=languages)
+            _clear_progress(rid)
+            logger.info(f"[ANALYSIS] Completed for local repo {repo_name}")
+
+        except asyncio.CancelledError:
+            logger.info(f"[ANALYSIS] Cancelled for local repo {repo_name}")
+            await repo_repo.update_analysis_status(repo_id, "cancelled")
+            _clear_progress(rid)
+        except Exception as e:
+            logger.error(f"[ANALYSIS] Failed for local repo {repo_name}: {e}", exc_info=True)
+            await repo_repo.update_analysis_status(repo_id, "failed", error=str(e))
+            _clear_progress(rid)
+
+
+async def execute_local_custom_skill(
+    repo_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    llm_connection_id: str,
+    prompt_template: str,
+    skill_name: str,
+    parameters: str | None,
+    local_path: str,
+    repo_name: str,
+) -> CustomSkill:
+    from server.services.local_repo_service import detect_local_languages, get_local_file_content, get_local_file_tree
+
+    async with AsyncSessionFactory() as session:
+        skill_repo = CustomSkillRepository(session)
+
+        tree = await get_local_file_tree(local_path)
+        blob_paths = _get_blob_paths(tree)
+        key_files = _select_key_files(blob_paths)
+
+        file_contents: dict[str, str] = {}
+        total_chars = 0
+        for path in key_files:
+            if total_chars >= MAX_CHARS_PER_SKILL:
+                break
+            content = await get_local_file_content(local_path, path)
+            if content:
+                file_contents[path] = content
+                total_chars += len(content)
+
+        languages = detect_local_languages(tree)
+
+        file_tree_str = "\n".join(blob_paths)
+        file_contents_str = "\n\n".join(f"### {p}\n```\n{c}\n```" for p, c in file_contents.items())
+        languages_str = json.dumps(languages, indent=2)
+
+        prompt = prompt_template.replace("{file_contents}", file_contents_str)
+        prompt = prompt.replace("{file_tree}", file_tree_str)
+        prompt = prompt.replace("{languages}", languages_str)
+
+        if parameters:
+            try:
+                params = json.loads(parameters)
+                for key, value in params.items():
+                    prompt = prompt.replace(f"{{{key}}}", str(value))
+            except json.JSONDecodeError:
+                pass
+
+        content = await CompletionService.complete(
+            prompt=prompt,
+            llm_connection_id=llm_connection_id,
+            session=session,
+            system_prompt=(
+                "You are writing a skill document that an AI agent will consume. "
+                "Write structured markdown optimized for machine parsing. "
+                "Start with a '## When To Use This Skill' section listing trigger terms. "
+                "Use bullet points, cite exact file paths, no filler. Target 200-400 lines. "
+                "Acknowledge gaps instead of speculating."
+            ),
+        )
+        if not content:
+            raise ValueError("LLM returned empty content for custom skill")
+
+        lang_list = ", ".join(list(languages.keys())[:3]) if languages else ""
+        description = f"Use when asked about {skill_name} in {repo_name}."
+        if lang_list:
+            description += f" Languages: {lang_list}."
+        description = description[:500]
+
+        skill = await skill_repo.upsert_github_skill(
+            tenant_id=tenant_id,
+            created_by=user_id,
+            github_repo_id=repo_id,
+            github_analysis_type=f"custom:{skill_name}",
+            name=skill_name,
+            description=description,
+            instructions=content,
+        )
+        return skill
+
+
+async def execute_custom_skill(
+    repo_id: UUID,
+    tenant_id: UUID,
+    user_id: UUID,
+    llm_connection_id: str,
+    prompt_template: str,
+    skill_name: str,
+    parameters: str | None,
+    github_token: str,
+    repo_full_name: str,
+    default_branch: str,
+) -> CustomSkill:
+    async with AsyncSessionFactory() as session:
+        skill_repo = CustomSkillRepository(session)
+
+        owner, repo_name = repo_full_name.split("/", 1)
+
+        tree = await github_service.get_repo_tree(github_token, owner, repo_name, default_branch)
+        blob_paths = _get_blob_paths(tree)
+        key_files = _select_key_files(blob_paths)
+
+        file_contents: dict[str, str] = {}
+        total_chars = 0
+        for path in key_files:
+            if total_chars >= MAX_CHARS_PER_SKILL:
+                break
+            content = await github_service.get_file_content(github_token, owner, repo_name, path)
+            if content:
+                file_contents[path] = content
+                total_chars += len(content)
+
+        languages = await github_service.get_repo_languages(github_token, owner, repo_name)
+
+        file_tree_str = "\n".join(blob_paths)
+
+        file_contents_str = "\n\n".join(f"### {p}\n```\n{c}\n```" for p, c in file_contents.items())
+        languages_str = json.dumps(languages, indent=2)
+
+        prompt = prompt_template.replace("{file_contents}", file_contents_str)
+        prompt = prompt.replace("{file_tree}", file_tree_str)
+        prompt = prompt.replace("{languages}", languages_str)
+
+        if parameters:
+            try:
+                params = json.loads(parameters)
+                for key, value in params.items():
+                    prompt = prompt.replace(f"{{{key}}}", str(value))
+            except json.JSONDecodeError:
+                pass
+
+        content = await CompletionService.complete(
+            prompt=prompt,
+            llm_connection_id=llm_connection_id,
+            session=session,
+            system_prompt=(
+                "You are writing a skill document that an AI agent will consume. "
+                "Write structured markdown optimized for machine parsing. "
+                "Start with a '## When To Use This Skill' section listing trigger terms. "
+                "Use bullet points, cite exact file paths, no filler. Target 200-400 lines. "
+                "Acknowledge gaps instead of speculating."
+            ),
+        )
+        if not content:
+            raise ValueError("LLM returned empty content for custom skill")
+
+        lang_list = ", ".join(list(languages.keys())[:3]) if languages else ""
+        description = f"Use when asked about {skill_name} in {repo_full_name}."
+        if lang_list:
+            description += f" Languages: {lang_list}."
+        description = description[:500]
+
+        skill = await skill_repo.upsert_github_skill(
+            tenant_id=tenant_id,
+            created_by=user_id,
+            github_repo_id=repo_id,
+            github_analysis_type=f"custom:{skill_name}",
+            name=skill_name,
+            description=description,
+            instructions=content,
+        )
+        return skill

@@ -1,0 +1,319 @@
+from __future__ import annotations
+
+import base64
+import os
+import secrets
+from urllib.parse import urlencode
+from uuid import UUID
+
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from server.repositories.skill_credentials import SkillCredentialRepository
+from server.utils.config_loader import get_email_config, get_github_oauth_config, is_self_hosted
+from server.utils.custom_logger import get_logger
+
+logger = get_logger(__name__)
+
+_github_config = get_github_oauth_config()
+GITHUB_CLIENT_ID = _github_config.get("client_id") or ""
+GITHUB_CLIENT_SECRET = _github_config.get("client_secret") or ""
+
+GITHUB_OAUTH_CLIENT_ID_KEY = "github_oauth_client_id"
+GITHUB_OAUTH_CLIENT_SECRET_KEY = "github_oauth_client_secret"
+GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_SCOPES = "repo read:user"
+REQUIRED_SCOPES = {"repo"}
+
+
+def _get_frontend_url() -> str:
+    url = os.getenv("FRONTEND_URL", "").rstrip("/")
+    if url:
+        return url
+    if is_self_hosted():
+        return get_email_config().get("frontend_url", "").rstrip("/")
+    return ""
+
+
+def _get_redirect_uri() -> str:
+    frontend_url = _get_frontend_url()
+    if frontend_url:
+        return f"{frontend_url}/api/github/oauth/callback"
+    return "byaan://github/callback"
+
+
+_frontend_url = _get_frontend_url()
+GITHUB_REDIRECT_URI = _get_redirect_uri()
+
+_oauth_state_store: dict[str, dict] = {}
+
+GITHUB_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
+
+
+async def get_github_oauth_credentials(session: AsyncSession | None = None) -> tuple[str, str]:
+    if not is_self_hosted():
+        return GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+
+    if not session:
+        return "", ""
+
+    from server.services.crypto_service import CryptoService
+    from server.services.settings import SettingsService
+
+    client_id_setting = await SettingsService.get_setting_by_key(session, GITHUB_OAUTH_CLIENT_ID_KEY)
+    if not client_id_setting:
+        return "", ""
+
+    secret_setting = await SettingsService.get_setting_by_key(session, GITHUB_OAUTH_CLIENT_SECRET_KEY)
+    if not secret_setting:
+        return "", ""
+
+    client_id = client_id_setting.setting_value
+    try:
+        decrypted = await CryptoService.decrypt_config(secret_setting.setting_value, session)
+        client_secret = decrypted.get("value", "")
+    except Exception:
+        logger.error("[GITHUB OAUTH] Failed to decrypt client secret")
+        return "", ""
+
+    return client_id, client_secret
+
+
+async def create_auth_url(
+    redirect_uri: str | None = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+    client_id: str | None = None,
+) -> tuple[str, str]:
+    redirect_uri = redirect_uri or GITHUB_REDIRECT_URI
+    resolved_client_id = client_id or GITHUB_CLIENT_ID
+    state = secrets.token_urlsafe(32)
+    _oauth_state_store[state] = {"redirect_uri": redirect_uri, "tenant_id": tenant_id, "user_id": user_id}
+    logger.info(f"[GITHUB OAUTH] Created auth URL with state: {state[:16]}...")
+
+    params = {
+        "client_id": resolved_client_id,
+        "redirect_uri": redirect_uri,
+        "scope": GITHUB_SCOPES,
+        "state": state,
+    }
+    auth_url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
+    return auth_url, state
+
+
+async def exchange_code(
+    code: str, state: str, client_id: str | None = None, client_secret: str | None = None
+) -> tuple[dict, dict]:
+    stored = _oauth_state_store.pop(state, None)
+    if not stored:
+        raise ValueError("Invalid or expired state parameter. Please restart the authentication flow.")
+
+    resolved_client_id = client_id or GITHUB_CLIENT_ID
+    resolved_client_secret = client_secret or GITHUB_CLIENT_SECRET
+
+    logger.info("[GITHUB OAUTH] Exchanging code for token...")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            GITHUB_TOKEN_URL,
+            json={
+                "client_id": resolved_client_id,
+                "client_secret": resolved_client_secret,
+                "code": code,
+                "redirect_uri": stored.get("redirect_uri", GITHUB_REDIRECT_URI),
+            },
+            headers={"Accept": "application/json"},
+        )
+        if response.status_code != 200:
+            logger.error(f"[GITHUB OAUTH] Token exchange failed: {response.status_code}")
+            raise ValueError(f"Token exchange failed: {response.text}")
+
+        data = response.json()
+        if "error" in data:
+            raise ValueError(f"GitHub OAuth error: {data.get('error_description', data['error'])}")
+
+        return data, stored
+
+
+async def save_github_token(tenant_id: UUID, user_id: UUID, token_data: dict, session: AsyncSession) -> None:
+    repo = SkillCredentialRepository(session)
+    await repo.upsert(
+        skill_name="github",
+        credentials=token_data,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        scope="user",
+        created_by=user_id,
+    )
+
+
+async def get_github_token(tenant_id: UUID, user_id: UUID, session: AsyncSession) -> str | None:
+    repo = SkillCredentialRepository(session)
+    cred = await repo.get_by_skill("github", tenant_id, user_id, scope="user")
+    if not cred:
+        return None
+    decrypted = await repo.get_decrypted_credentials(cred)
+    if not decrypted:
+        return None
+    return decrypted.get("access_token")
+
+
+async def delete_github_token(tenant_id: UUID, user_id: UUID, session: AsyncSession) -> bool:
+    repo = SkillCredentialRepository(session)
+    return await repo.delete_by_skill("github", tenant_id, user_id, scope="user")
+
+
+async def _fetch_github_user(token: str) -> tuple[dict, list[str]]:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/user",
+            headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        data = response.json()
+        user = {"login": data["login"], "avatar_url": data.get("avatar_url"), "name": data.get("name")}
+        scopes_header = response.headers.get("X-OAuth-Scopes", "")
+        granted_scopes = [s.strip() for s in scopes_header.split(",") if s.strip()]
+        return user, granted_scopes
+
+
+async def get_authenticated_user(token: str) -> dict:
+    user, _ = await _fetch_github_user(token)
+    return user
+
+
+async def validate_token_scopes(token: str) -> list[str]:
+    _, granted_scopes = await _fetch_github_user(token)
+    return sorted(REQUIRED_SCOPES - set(granted_scopes))
+
+
+async def list_user_repos(token: str, page: int = 1, per_page: int = 30, search: str | None = None) -> list[dict]:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        if search:
+            user = await get_authenticated_user(token)
+            response = await client.get(
+                f"{GITHUB_API_BASE}/search/repositories",
+                params={"q": f"user:{user['login']} {search}", "per_page": per_page, "page": page},
+                headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+            _check_rate_limit(response)
+            return [
+                {
+                    "full_name": r["full_name"],
+                    "private": r["private"],
+                    "language": r.get("language"),
+                    "description": r.get("description"),
+                    "default_branch": r.get("default_branch", "main"),
+                }
+                for r in response.json().get("items", [])
+            ]
+
+        response = await client.get(
+            f"{GITHUB_API_BASE}/user/repos",
+            params={
+                "affiliation": "owner,collaborator",
+                "sort": "updated",
+                "per_page": per_page,
+                "page": page,
+            },
+            headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        _check_rate_limit(response)
+        return [
+            {
+                "full_name": r["full_name"],
+                "private": r["private"],
+                "language": r.get("language"),
+                "description": r.get("description"),
+                "default_branch": r.get("default_branch", "main"),
+            }
+            for r in response.json()
+        ]
+
+
+async def get_repo_tree(token: str, owner: str, repo: str, branch: str, recursive: bool = True) -> list[dict]:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        params = {"recursive": "1"} if recursive else {}
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{branch}",
+            params=params,
+            headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        _check_rate_limit(response)
+        return response.json().get("tree", [])
+
+
+async def get_file_content(token: str, owner: str, repo: str, path: str, ref: str | None = None) -> str | None:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        params = {"ref": ref} if ref else {}
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}",
+            params=params,
+            headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        if response.status_code != 200:
+            return None
+        _check_rate_limit(response)
+        data = response.json()
+        if data.get("size", 0) > 100_000:
+            return None
+        content = data.get("content", "")
+        if not content:
+            return None
+        try:
+            return base64.b64decode(content).decode("utf-8", errors="replace")
+        except Exception:
+            return None
+
+
+async def get_repo_languages(token: str, owner: str, repo: str) -> dict:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/languages",
+            headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        _check_rate_limit(response)
+        return response.json()
+
+
+async def get_latest_commit_sha(token: str, owner: str, repo: str, branch: str) -> str:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits/{branch}",
+            headers={**GITHUB_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        return response.json()["sha"]
+
+
+async def is_oauth_configured(session: AsyncSession | None = None) -> bool:
+    client_id, client_secret = await get_github_oauth_credentials(session)
+    return bool(client_id) and bool(client_secret)
+
+
+async def validate_and_save_pat(token: str, tenant_id: UUID, user_id: UUID, session: AsyncSession) -> dict:
+    missing = await validate_token_scopes(token)
+    if missing:
+        raise ValueError(
+            f"Token is missing required scope(s): {', '.join(missing)}. "
+            "Create a new token with these scopes at github.com/settings/tokens"
+        )
+    user_info = await get_authenticated_user(token)
+    token_data = {"access_token": token, "token_type": "pat"}
+    await save_github_token(tenant_id, user_id, token_data, session)
+    return user_info
+
+
+def _check_rate_limit(response: httpx.Response) -> None:
+    remaining = response.headers.get("X-RateLimit-Remaining")
+    if remaining and int(remaining) < 100:
+        logger.warning(f"[GITHUB API] Rate limit low: {remaining} remaining")

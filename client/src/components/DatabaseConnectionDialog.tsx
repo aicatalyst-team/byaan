@@ -1,0 +1,1000 @@
+"use client"
+
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import { Loader2, Upload, FileText, X, Link as LinkIcon, Leaf, Cylinder, Server, HardDrive, Database, Cloud } from 'lucide-react'
+import type { ConnectionType, Datasource } from '../services/api'
+
+export interface DatabaseConnectionDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  mode?: 'create' | 'select'
+
+  // For select mode (show previous connections)
+  datasources?: Datasource[]
+  selectedConnectionId?: string
+  selectedConnectionIds?: string[]  // Multi-select support
+  onConnectionSelect?: (id: string) => void
+  onConfirmConnection?: () => void | Promise<void>
+  multiSelect?: boolean  // Enable multi-select mode
+
+  // For create mode
+  onCreateConnection?: (data: {
+    type: ConnectionType | 'upload' | 'url'
+    name: string
+    connectionObj?: any
+    files?: File[]
+    aliases?: Record<string, string>
+    fileType?: 'csv' | 'excel' | 'parquet' | 'json'
+    urls?: string[]
+  }) => Promise<void>
+
+  // Optional customization
+  title?: string
+  submitButtonText?: string
+  showPreviousConnectionsOption?: boolean
+  isLoading?: boolean
+
+  // Callbacks
+  onSwitchToCreate?: () => void
+  onSwitchToSelect?: () => void
+}
+
+export function DatabaseConnectionDialog({
+  open,
+  onOpenChange,
+  mode = 'create',
+  datasources = [],
+  selectedConnectionId,
+  selectedConnectionIds = [],
+  onConnectionSelect,
+  onConfirmConnection,
+  onCreateConnection,
+  title,
+  submitButtonText,
+  showPreviousConnectionsOption = true,
+  isLoading = false,
+  onSwitchToCreate,
+  onSwitchToSelect,
+  multiSelect = false,
+}: DatabaseConnectionDialogProps) {
+  // Handle dialog close - only close if in select mode or no previous connections
+  const handleClose = () => {
+    if (isLoading) return
+
+    // If we're in create mode and have previous connections, go back to select mode
+    if (mode === 'create' && showPreviousConnectionsOption && datasources.length > 0 && onSwitchToSelect) {
+      onSwitchToSelect()
+    } else {
+      // Otherwise close the dialog
+      onOpenChange(false)
+    }
+  }
+  // Connection type selection
+  const [selectedType, setSelectedType] = useState<ConnectionType | 'upload' | 'url'>('upload')
+
+  // Form state for database connections
+  const [connectionConfig, setConnectionConfig] = useState({
+    name: '',
+    host: 'localhost',
+    port: '5432',
+    database: '',
+    user: '',
+    password: '',
+    connectionString: '',
+    region: '',
+    accessKeyId: '',
+    secretAccessKey: '',
+    endpointUrl: '',
+    queryMode: 'partiql' as 'partiql' | 'native',
+  })
+
+  // Upload files state
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
+  const [uploadFileAliases, setUploadFileAliases] = useState<Record<string, string>>({})
+  const [uploadFileType, setUploadFileType] = useState<'csv' | 'excel' | 'parquet' | 'json' | ''>('')
+  const [isDragging, setIsDragging] = useState(false)
+  const uploadFileInputRef = useRef<HTMLInputElement>(null)
+
+  // URL upload state
+  const [uploadURLs, setUploadURLs] = useState<string[]>([''])
+
+  // Helper functions
+  const formatDbType = (type: string): string => {
+    switch (type) {
+      case 'pg': return 'PostgreSQL'
+      case 'mongo': return 'MongoDB'
+      case 'mysql': return 'MySQL'
+      case 'sqlite': return 'SQLite'
+      case 'mssql': return 'SQL Server'
+      case 'dynamodb': return 'DynamoDB'
+      case 'csv': return 'CSV File'
+      case 'excel': return 'Excel File'
+      case 'parquet': return 'Parquet File'
+      case 'json': return 'JSON File'
+      case 'duckdb': return 'DuckDB File Dataset'
+      default: return type.toUpperCase()
+    }
+  }
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  }
+
+  const truncateFilename = (filename: string, maxLength: number = 25): string => {
+    if (filename.length <= maxLength) return filename
+    const extension = filename.split('.').pop() || ''
+    const nameWithoutExt = filename.substring(0, filename.lastIndexOf('.'))
+    const truncatedName = nameWithoutExt.substring(0, maxLength - extension.length - 4) + '...'
+    return extension ? `${truncatedName}.${extension}` : truncatedName
+  }
+
+  const detectFileType = (filename: string): 'csv' | 'excel' | 'parquet' | 'json' | null => {
+    const lowerName = filename.toLowerCase()
+    if (lowerName.endsWith('.csv')) return 'csv'
+    if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) return 'excel'
+    if (lowerName.endsWith('.parquet')) return 'parquet'
+    if (lowerName.endsWith('.json')) return 'json'
+    return null
+  }
+
+  // Form validation
+  const isFormValid = useMemo(() => {
+    if (!connectionConfig.name.trim()) return false
+
+    if (selectedType === 'upload') {
+      return uploadFileType !== '' && uploadFiles.length > 0
+    }
+
+    if (selectedType === 'url') {
+      return uploadURLs.filter(u => u.trim()).length > 0
+    }
+
+    if (selectedType === 'mongo') {
+      return connectionConfig.connectionString.trim().length > 0
+    }
+
+    if (selectedType === 'sqlite') {
+      return connectionConfig.database.trim().length > 0
+    }
+
+    if (selectedType === 'dynamodb') {
+      return (
+        connectionConfig.region.trim().length > 0 &&
+        connectionConfig.accessKeyId.trim().length > 0 &&
+        connectionConfig.secretAccessKey.trim().length > 0
+      )
+    }
+
+    // PostgreSQL, MySQL, MSSQL
+    return (
+      connectionConfig.host.trim().length > 0 &&
+      connectionConfig.port.trim().length > 0 &&
+      connectionConfig.database.trim().length > 0 &&
+      connectionConfig.user.trim().length > 0 &&
+      connectionConfig.password.trim().length > 0
+    )
+  }, [selectedType, connectionConfig, uploadFileType, uploadFiles, uploadURLs])
+
+  // Handle type change
+  const handleTypeChange = (newType: ConnectionType | 'upload' | 'url') => {
+    setSelectedType(newType)
+    const defaultPorts: Record<string, string> = {
+      pg: '5432',
+      mysql: '3306',
+      mssql: '1433',
+      sqlite: '',
+      mongo: '27017',
+      dynamodb: '',
+      csv: '',
+      excel: '',
+      parquet: '',
+      json: '',
+      upload: '',
+      url: ''
+    }
+    setConnectionConfig(prev => ({
+      ...prev,
+      port: defaultPorts[newType] || '',
+      connectionString: ''
+    }))
+  }
+
+  // Handle file upload
+  const handleUploadFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || [])
+    handleUploadFilesSelection(selectedFiles)
+  }
+
+  const handleUploadFilesDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    handleUploadFilesSelection(droppedFiles)
+  }
+
+  const handleUploadFilesSelection = (selectedFiles: File[]) => {
+    if (selectedFiles.length === 0) return
+
+    const allowedExtensions: Record<'csv' | 'excel' | 'parquet' | 'json', string[]> = {
+      csv: ['.csv'],
+      excel: ['.xlsx', '.xls'],
+      parquet: ['.parquet'],
+      json: ['.json']
+    }
+
+    // Auto-detect file type from first file if no files uploaded yet
+    let currentFileType = uploadFileType
+    if (uploadFiles.length === 0 && selectedFiles.length > 0) {
+      const detectedType = detectFileType(selectedFiles[0].name)
+      if (detectedType) {
+        currentFileType = detectedType
+        setUploadFileType(detectedType)
+      } else {
+        alert(`Unable to detect file type from "${selectedFiles[0].name}". Supported: .csv, .xlsx, .xls, .parquet, .json`)
+        return
+      }
+    }
+
+    if (!currentFileType) {
+      alert('Please upload files to detect type')
+      return
+    }
+
+    const extensions = allowedExtensions[currentFileType as 'csv' | 'excel' | 'parquet' | 'json']
+    const typeLabel = currentFileType.toUpperCase()
+
+    // Check for duplicates
+    const existingFileNames = new Set(uploadFiles.map(f => f.name))
+    const duplicates: string[] = []
+
+    // Validate each file
+    for (const file of selectedFiles) {
+      const isValidExtension = extensions.some(ext => file.name.toLowerCase().endsWith(ext))
+      if (!isValidExtension) {
+        alert(`File "${file.name}" doesn't match detected type (${typeLabel}). All files must be ${extensions.join(' or ')} files.`)
+        return
+      }
+      if (existingFileNames.has(file.name)) {
+        duplicates.push(file.name)
+      }
+    }
+
+    if (duplicates.length > 0) {
+      alert(`The following file(s) are already added: ${duplicates.join(', ')}`)
+      return
+    }
+
+    // Add files
+    setUploadFiles(prev => [...prev, ...selectedFiles])
+
+    // Auto-generate aliases
+    const newAliases: Record<string, string> = {}
+    selectedFiles.forEach(file => {
+      let alias = file.name
+      extensions.forEach(ext => {
+        if (alias.toLowerCase().endsWith(ext)) {
+          alias = alias.slice(0, -ext.length)
+        }
+      })
+      newAliases[file.name] = alias
+    })
+    setUploadFileAliases(prev => ({ ...prev, ...newAliases }))
+  }
+
+  // Handle form submit
+  const handleSubmit = async () => {
+    if (!onCreateConnection) return
+
+    if (selectedType === 'upload') {
+      await onCreateConnection({
+        type: 'upload',
+        name: connectionConfig.name,
+        files: uploadFiles,
+        aliases: uploadFileAliases,
+        fileType: uploadFileType as 'csv' | 'excel' | 'parquet' | 'json'
+      })
+    } else if (selectedType === 'url') {
+      const validURLs = uploadURLs.filter(u => u.trim().length > 0)
+      await onCreateConnection({
+        type: 'url',
+        name: connectionConfig.name,
+        urls: validURLs,
+        fileType: uploadFileType || undefined
+      })
+    } else {
+      // Database connection
+      let connectionObj: Record<string, any>
+
+      if (selectedType === 'mongo') {
+        connectionObj = { connection_string: connectionConfig.connectionString }
+      } else if (selectedType === 'sqlite') {
+        connectionObj = { database: connectionConfig.database }
+      } else if (selectedType === 'dynamodb') {
+        connectionObj = {
+          region: connectionConfig.region,
+          access_key_id: connectionConfig.accessKeyId,
+          secret_access_key: connectionConfig.secretAccessKey,
+          endpoint_url: connectionConfig.endpointUrl || '',
+          query_mode: connectionConfig.queryMode,
+        }
+      } else {
+        connectionObj = {
+          host: connectionConfig.host,
+          port: parseInt(connectionConfig.port),
+          database: connectionConfig.database,
+          user: connectionConfig.user,
+          password: connectionConfig.password
+        }
+      }
+
+      await onCreateConnection({
+        type: selectedType as ConnectionType,
+        name: connectionConfig.name,
+        connectionObj
+      })
+    }
+  }
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedType('upload')
+      setConnectionConfig({
+        name: '',
+        host: 'localhost',
+        port: '5432',
+        database: '',
+        user: '',
+        password: '',
+        connectionString: '',
+        region: '',
+        accessKeyId: '',
+        secretAccessKey: '',
+        endpointUrl: '',
+        queryMode: 'partiql',
+      })
+      setUploadFiles([])
+      setUploadFileAliases({})
+      setUploadFileType('')
+      setUploadURLs([''])
+      setIsDragging(false)
+    }
+  }, [open])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-4xl bg-[#2a2a2a] border-[#444444] p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#444444]">
+          <DialogTitle className="text-white text-xl">
+            {title || (mode === 'select' ? 'Select Database Connection' : 'Add Database Connection')}
+          </DialogTitle>
+        </DialogHeader>
+
+        {mode === 'select' ? (
+          // Previous Connections List
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <Label className="text-white text-base">
+                Previous Connections {multiSelect && selectedConnectionIds.length > 0 && `(${selectedConnectionIds.length} selected)`}
+              </Label>
+              {showPreviousConnectionsOption && onSwitchToCreate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onSwitchToCreate}
+                  disabled={isLoading}
+                  className="text-blue-500 hover:text-blue-400 hover:bg-blue-500/10 text-sm h-auto py-1"
+                >
+                  + Add New Connection
+                </Button>
+              )}
+            </div>
+
+            <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-3">
+              {datasources
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .map((datasource) => {
+                  const isSelected = multiSelect
+                    ? selectedConnectionIds.includes(datasource.id)
+                    : selectedConnectionId === datasource.id
+                  return (
+                  <div
+                    key={datasource.id}
+                    onClick={() => !isLoading && onConnectionSelect?.(datasource.id)}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      isLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                    } ${
+                      isSelected
+                        ? 'bg-blue-600/10 border-blue-500'
+                        : 'bg-[#1a1a1a] border-[#555555] hover:border-[#777777]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-white text-sm font-medium truncate">
+                        {datasource.name || 'Unknown Datasource'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {datasource.source_type === 'dataset' && datasource.files_count && (
+                          <span className="text-[#aaaaaa] text-xs bg-[#333333] px-2 py-0.5 rounded">
+                            {datasource.files_count} file{datasource.files_count > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        <span className="text-[#aaaaaa] text-xs">
+                          {formatDbType(datasource.type)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  )
+                })}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                disabled={isLoading}
+                className="border-[#555555] text-white hover:bg-[#3a3a3a]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={onConfirmConnection}
+                disabled={multiSelect ? selectedConnectionIds.length === 0 || isLoading : !selectedConnectionId || isLoading}
+                className={`${
+                  (multiSelect ? selectedConnectionIds.length > 0 : selectedConnectionId) && !isLoading
+                    ? 'bg-brand-orange hover:bg-brand-orange/90'
+                    : 'bg-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                {submitButtonText || 'Connect'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          // Create Connection with Sidebar
+          <div className="flex h-[600px]">
+            {/* Sidebar */}
+            <div className="w-52 bg-[#1a1a1a] border-r border-[#444444] p-3 overflow-y-auto custom-scrollbar">
+              <div className="space-y-1">
+                {/* Upload Files */}
+                <button
+                  onClick={() => handleTypeChange('upload')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'upload'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Upload className={`w-5 h-5 flex-shrink-0 ${selectedType === 'upload' ? 'text-brand-orange' : ''}`} />
+                  <span className="text-sm font-medium">Upload Files</span>
+                </button>
+
+                {/* Import from URL */}
+                <button
+                  onClick={() => handleTypeChange('url')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'url'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <LinkIcon className={`w-5 h-5 flex-shrink-0 ${selectedType === 'url' ? 'text-brand-orange' : ''}`} />
+                  <span className="text-sm font-medium">Import from URL</span>
+                </button>
+
+                {/* Divider */}
+                <div className="my-2 border-t border-[#444444]"></div>
+
+                {/* PostgreSQL */}
+                <button
+                  onClick={() => handleTypeChange('pg')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'pg'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Cylinder className="w-5 h-5 flex-shrink-0 text-blue-400" />
+                  <span className="text-sm font-medium">PostgreSQL</span>
+                </button>
+
+                {/* MongoDB */}
+                <button
+                  onClick={() => handleTypeChange('mongo')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'mongo'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Leaf className="w-5 h-5 flex-shrink-0 text-green-500" />
+                  <span className="text-sm font-medium">MongoDB</span>
+                </button>
+
+                {/* MySQL */}
+                <button
+                  onClick={() => handleTypeChange('mysql')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'mysql'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Database className="w-5 h-5 flex-shrink-0 text-orange-400" />
+                  <span className="text-sm font-medium">MySQL</span>
+                </button>
+
+                {/* SQL Server */}
+                <button
+                  onClick={() => handleTypeChange('mssql')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'mssql'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Server className="w-5 h-5 flex-shrink-0 text-red-400" />
+                  <span className="text-sm font-medium">SQL Server</span>
+                </button>
+
+                {/* SQLite */}
+                <button
+                  onClick={() => handleTypeChange('sqlite')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'sqlite'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <HardDrive className="w-5 h-5 flex-shrink-0 text-cyan-400" />
+                  <span className="text-sm font-medium">SQLite</span>
+                </button>
+
+                {/* DynamoDB */}
+                <button
+                  onClick={() => handleTypeChange('dynamodb')}
+                  disabled={isLoading}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-all text-left ${
+                    selectedType === 'dynamodb'
+                      ? 'bg-brand-orange/10 text-white border-l-3 border-brand-orange'
+                      : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Cloud className="w-5 h-5 flex-shrink-0 text-amber-400" />
+                  <span className="text-sm font-medium">DynamoDB</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Form Content Area */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                <div className="space-y-4">
+                  {/* Connection/Datasource Name - Always shown */}
+                  <div>
+                    <Label htmlFor="connection-name" className="text-white">
+                      {selectedType === 'upload' || selectedType === 'url' ? 'Datasource Name' : 'Connection Name'} <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      id="connection-name"
+                      value={connectionConfig.name}
+                      onChange={(e) => setConnectionConfig(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder={selectedType === 'upload' || selectedType === 'url' ? 'My File Datasource' : 'My Database Connection'}
+                      disabled={isLoading}
+                      className="mt-1 bg-[#1a1a1a] border-[#555555] text-white placeholder-[#888888]"
+                    />
+                  </div>
+
+                  {/* Upload Files Form */}
+                  {selectedType === 'upload' && (
+                    <>
+                      {uploadFiles.length > 0 && uploadFileType && (
+                        <div className="bg-[#1a1a1a] border border-[#555555] rounded-md px-4 py-2 flex items-center justify-between">
+                          <span className="text-sm text-white">
+                            File Type: <span className="font-medium">{uploadFileType.toUpperCase()}</span>
+                          </span>
+                          <span className="text-sm text-gray-400">
+                            {uploadFiles.length} file{uploadFiles.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      )}
+
+                      <div
+                        className={`border-2 border-dashed rounded-lg transition-colors ${
+                          isDragging
+                            ? 'border-brand-orange bg-brand-orange/10'
+                            : 'border-[#555555] hover:border-[#777777] hover:bg-[#333333]'
+                        } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onDragOver={(e) => {
+                          if (!isLoading) {
+                            e.preventDefault()
+                            setIsDragging(true)
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault()
+                          setIsDragging(false)
+                        }}
+                        onDrop={(e) => {
+                          if (!isLoading) {
+                            handleUploadFilesDrop(e)
+                          }
+                        }}
+                      >
+                        <input
+                          ref={uploadFileInputRef}
+                          type="file"
+                          accept=".csv,.xlsx,.xls,.parquet,.json"
+                          multiple
+                          onChange={handleUploadFilesChange}
+                          disabled={isLoading}
+                          className="hidden"
+                        />
+
+                        <div
+                          className={`p-6 text-center ${isLoading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          onClick={() => {
+                            if (!isLoading) {
+                              uploadFileInputRef.current?.click()
+                            }
+                          }}
+                        >
+                          <Upload className={`${uploadFiles.length > 0 ? 'w-8 h-8' : 'w-12 h-12'} mx-auto mb-3 text-brand-orange`} />
+                          <p className={`text-white font-medium ${uploadFiles.length > 0 ? 'text-sm mb-1' : 'mb-2'}`}>
+                            {uploadFiles.length > 0
+                              ? `Drag & drop more ${uploadFileType.toUpperCase()} files here`
+                              : 'Drag & drop your data files here'}
+                          </p>
+                          <p className={`text-gray-400 ${uploadFiles.length > 0 ? 'text-xs mb-2' : 'text-sm mb-4'}`}>
+                            or click to browse
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {uploadFiles.length > 0
+                              ? 'All files must be the same type'
+                              : 'Supported: CSV, Excel, Parquet, JSON • Type auto-detected'}
+                          </p>
+                        </div>
+
+                        {uploadFiles.length > 0 && (
+                          <div className="px-6 pb-6">
+                            <div className="flex items-center justify-between mb-3 pb-3 border-t border-[#555555] pt-3">
+                              <Label className="text-white text-sm">{uploadFiles.length} file(s) selected</Label>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setUploadFiles([])
+                                  setUploadFileAliases({})
+                                  setUploadFileType('')
+                                  if (uploadFileInputRef.current) {
+                                    uploadFileInputRef.current.value = ''
+                                  }
+                                }}
+                                disabled={isLoading}
+                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-7 text-xs"
+                              >
+                                Clear All
+                              </Button>
+                            </div>
+
+                            <div className="max-h-[200px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                              {uploadFiles.map((file, index) => (
+                                <div
+                                  key={index}
+                                  className="p-3 bg-[#1a1a1a] border border-[#555555] rounded-md"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      <FileText className="w-4 h-4 text-brand-orange flex-shrink-0" />
+                                      <p className="text-sm text-white font-medium flex-1 truncate" title={file.name}>
+                                        {truncateFilename(file.name)}
+                                      </p>
+                                      <p className="text-xs text-gray-400 flex-shrink-0">
+                                        {formatFileSize(file.size)}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const newFiles = uploadFiles.filter((_, i) => i !== index)
+                                        setUploadFiles(newFiles)
+                                        const newAliases = { ...uploadFileAliases }
+                                        delete newAliases[file.name]
+                                        setUploadFileAliases(newAliases)
+                                        if (newFiles.length === 0) {
+                                          setUploadFileType('')
+                                        }
+                                      }}
+                                      disabled={isLoading}
+                                      className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-8 w-8 p-0 flex-shrink-0"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Import from URL Form */}
+                  {selectedType === 'url' && (
+                    <div className="space-y-3">
+                      <Label className="text-white">File URLs</Label>
+                      {uploadURLs.map((url, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            value={url}
+                            onChange={(e) => {
+                              const newURLs = [...uploadURLs]
+                              newURLs[index] = e.target.value
+                              if (index === 0 && !uploadFileType && e.target.value) {
+                                const urlFileName = e.target.value.split('/').pop() || ''
+                                const detectedType = detectFileType(urlFileName)
+                                if (detectedType) {
+                                  setUploadFileType(detectedType)
+                                }
+                              }
+                              setUploadURLs(newURLs)
+                            }}
+                            placeholder={`https://example.com/data${uploadFileType ? '.' + (uploadFileType === 'excel' ? 'xlsx' : uploadFileType) : ''}`}
+                            disabled={isLoading}
+                            className="flex-1 bg-[#1a1a1a] border-[#555555] text-white placeholder-[#888888]"
+                          />
+                          {uploadURLs.length > 1 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setUploadURLs(uploadURLs.filter((_, i) => i !== index))
+                              }}
+                              disabled={isLoading}
+                              className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setUploadURLs([...uploadURLs, ''])}
+                        disabled={isLoading}
+                        className="w-full border-[#555555] text-white hover:bg-[#3a3a3a]"
+                      >
+                        + Add Another URL
+                      </Button>
+                      <p className="text-xs text-gray-400">
+                        Enter public URLs to data files (CSV, Excel, Parquet, JSON) or ZIP archives of these types.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Database Connection Forms */}
+                  {selectedType === 'mongo' && (
+                    <div>
+                      <Label htmlFor="conn-string" className="text-white">
+                        Connection String <span className="text-red-400">*</span>
+                      </Label>
+                      <Input
+                        id="conn-string"
+                        placeholder="mongodb://username:password@host:port/database"
+                        value={connectionConfig.connectionString}
+                        onChange={(e) => setConnectionConfig(prev => ({ ...prev, connectionString: e.target.value }))}
+                        disabled={isLoading}
+                        className="mt-1 bg-[#1a1a1a] border-[#555555] text-white font-mono text-sm"
+                      />
+                    </div>
+                  )}
+
+                  {selectedType === 'sqlite' && (
+                    <div>
+                      <Label htmlFor="database" className="text-white">
+                        Database File Path <span className="text-red-400">*</span>
+                      </Label>
+                      <Input
+                        id="database"
+                        placeholder="/path/to/database.db"
+                        value={connectionConfig.database}
+                        onChange={(e) => setConnectionConfig(prev => ({ ...prev, database: e.target.value }))}
+                        disabled={isLoading}
+                        className="mt-1 bg-[#1a1a1a] border-[#555555] text-white font-mono text-sm"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Enter the full path to your SQLite database file</p>
+                    </div>
+                  )}
+
+                  {selectedType === 'dynamodb' && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="region" className="text-white">AWS Region <span className="text-red-400">*</span></Label>
+                        <Input
+                          id="region"
+                          placeholder="us-east-1"
+                          value={connectionConfig.region}
+                          onChange={(e) => setConnectionConfig(prev => ({ ...prev, region: e.target.value }))}
+                          disabled={isLoading}
+                          className="mt-1 bg-[#1a1a1a] border-[#555555] text-white font-mono text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="accessKeyId" className="text-white">Access Key ID <span className="text-red-400">*</span></Label>
+                        <Input
+                          id="accessKeyId"
+                          placeholder="AKIA..."
+                          value={connectionConfig.accessKeyId}
+                          onChange={(e) => setConnectionConfig(prev => ({ ...prev, accessKeyId: e.target.value }))}
+                          disabled={isLoading}
+                          className="mt-1 bg-[#1a1a1a] border-[#555555] text-white font-mono text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="secretAccessKey" className="text-white">Secret Access Key <span className="text-red-400">*</span></Label>
+                        <Input
+                          id="secretAccessKey"
+                          type="password"
+                          placeholder="Secret access key"
+                          value={connectionConfig.secretAccessKey}
+                          onChange={(e) => setConnectionConfig(prev => ({ ...prev, secretAccessKey: e.target.value }))}
+                          disabled={isLoading}
+                          className="mt-1 bg-[#1a1a1a] border-[#555555] text-white font-mono text-sm"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="endpointUrl" className="text-white">Endpoint URL <span className="text-gray-500">(optional)</span></Label>
+                        <Input
+                          id="endpointUrl"
+                          placeholder="http://localhost:8000 (for local DynamoDB)"
+                          value={connectionConfig.endpointUrl}
+                          onChange={(e) => setConnectionConfig(prev => ({ ...prev, endpointUrl: e.target.value }))}
+                          disabled={isLoading}
+                          className="mt-1 bg-[#1a1a1a] border-[#555555] text-white font-mono text-sm"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Only needed for local DynamoDB or custom endpoints</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="queryMode" className="text-white">Query Mode <span className="text-red-400">*</span></Label>
+                        <select
+                          id="queryMode"
+                          value={connectionConfig.queryMode}
+                          onChange={(e) => setConnectionConfig(prev => ({ ...prev, queryMode: e.target.value as 'partiql' | 'native' }))}
+                          disabled={isLoading}
+                          className="mt-1 w-full rounded-md bg-[#1a1a1a] border border-[#555555] text-white px-3 py-2 text-sm"
+                        >
+                          <option value="partiql">PartiQL (SQL-like syntax)</option>
+                          <option value="native">Native API (scan/query/get)</option>
+                        </select>
+                        <p className="text-xs text-gray-400 mt-1">PartiQL uses SQL-like syntax. Native API uses JSON-based operations.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedType === 'pg' || selectedType === 'mysql' || selectedType === 'mssql') && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="host" className="text-white">Host <span className="text-red-400">*</span></Label>
+                          <Input
+                            id="host"
+                            placeholder="localhost"
+                            value={connectionConfig.host}
+                            onChange={(e) => setConnectionConfig(prev => ({ ...prev, host: e.target.value }))}
+                            disabled={isLoading}
+                            className="mt-1 bg-[#1a1a1a] border-[#555555] text-white"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="port" className="text-white">Port <span className="text-red-400">*</span></Label>
+                          <Input
+                            id="port"
+                            placeholder={selectedType === 'mysql' ? '3306' : selectedType === 'mssql' ? '1433' : '5432'}
+                            value={connectionConfig.port}
+                            onChange={(e) => setConnectionConfig(prev => ({ ...prev, port: e.target.value }))}
+                            disabled={isLoading}
+                            className="mt-1 bg-[#1a1a1a] border-[#555555] text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="database" className="text-white">Database <span className="text-red-400">*</span></Label>
+                        <Input
+                          id="database"
+                          placeholder="database name"
+                          value={connectionConfig.database}
+                          onChange={(e) => setConnectionConfig(prev => ({ ...prev, database: e.target.value }))}
+                          disabled={isLoading}
+                          className="mt-1 bg-[#1a1a1a] border-[#555555] text-white"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="user" className="text-white">User <span className="text-red-400">*</span></Label>
+                          <Input
+                            id="user"
+                            placeholder="user"
+                            value={connectionConfig.user}
+                            onChange={(e) => setConnectionConfig(prev => ({ ...prev, user: e.target.value }))}
+                            disabled={isLoading}
+                            className="mt-1 bg-[#1a1a1a] border-[#555555] text-white"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="password" className="text-white">Password <span className="text-red-400">*</span></Label>
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="password"
+                            value={connectionConfig.password}
+                            onChange={(e) => setConnectionConfig(prev => ({ ...prev, password: e.target.value }))}
+                            disabled={isLoading}
+                            className="mt-1 bg-[#1a1a1a] border-[#555555] text-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="border-t border-[#444444] p-6 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (showPreviousConnectionsOption && datasources.length > 0 && onSwitchToSelect) {
+                      onSwitchToSelect()
+                    } else {
+                      handleClose()
+                    }
+                  }}
+                  disabled={isLoading}
+                  className="border-[#555555] text-white hover:bg-[#3a3a3a]"
+                >
+                  {showPreviousConnectionsOption && datasources.length > 0 ? 'Back' : 'Cancel'}
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!isFormValid || isLoading}
+                  className={`${
+                    isFormValid && !isLoading
+                      ? 'bg-brand-orange hover:bg-brand-orange/90'
+                      : 'bg-gray-500 cursor-not-allowed'
+                  } flex items-center gap-2`}
+                >
+                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {submitButtonText || 'Create Datasource'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}

@@ -1,0 +1,47 @@
+# Docker Compose for LOCAL/COMMUNITY development (SQLite, no PostgreSQL)
+# Usage: make dev | make dev-build | make stop
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
+      target: runtime
+    ports:
+      - "${BACKEND_PORT:-17433}:8000"
+    volumes:
+      - .:/app
+      - /app/.venv
+      - ./server/.data:/app/server/.data
+    environment:
+      - PYTHONPATH=/app
+      - HOME=/root
+      - APP_MODE=community
+      - VITE_DEV_MODE=true
+      - BYAAN_HOST_PROJECT_DIR=${PWD}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  client:
+    build:
+      context: .
+      dockerfile: ./client/Dockerfile
+      target: dev
+    ports:
+      - "${FRONTEND_PORT:-17434}:5173"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+      - /app/.pnpm-store
+    environment:
+      - VITE_API_URL=http://server:8000
+      - VITE_DEV_MODE=true
+      - FRONTEND_PORT=${FRONTEND_PORT:-17434}
+    restart: unless-stopped
+    depends_on:
+      - server

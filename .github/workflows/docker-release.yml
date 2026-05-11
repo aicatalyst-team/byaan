@@ -1,0 +1,339 @@
+name: Docker Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (e.g., 1.0.3)"
+        required: true
+        type: string
+      tag_latest:
+        description: "Also tag as 'latest'"
+        required: true
+        type: boolean
+        default: true
+      tag_stable:
+        description: "Also tag as 'stable' (only for validated releases)"
+        required: true
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: docker.io
+  SELF_HOSTED_IMAGE: byaan/self-hosted
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            suffix: amd64
+          - runner: ubuntu-latest
+            platform: linux/arm64
+            suffix: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION for ${{ matrix.platform }}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Self-Hosted image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.self-hosted
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ env.SELF_HOSTED_IMAGE }}:${{ steps.version.outputs.version }}-${{ matrix.suffix }}
+          cache-from: type=gha,scope=self-hosted-${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=self-hosted-${{ matrix.suffix }}
+          build-args: |
+            VITE_IS_HOSTED=true
+            VITE_IS_SELF_HOSTED=true
+
+  create-manifest:
+    name: Create Multi-Arch Manifest
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version and determine tags
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            TAG_LATEST="${{ inputs.tag_latest }}"
+            TAG_STABLE="${{ inputs.tag_stable }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+            TAG_LATEST="true"
+            if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+              TAG_STABLE="false"
+              echo "Pre-release detected - skipping stable tag"
+            else
+              TAG_STABLE="true"
+              echo "Full release detected - will tag as stable"
+            fi
+          else
+            VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
+            TAG_LATEST="false"
+            TAG_STABLE="false"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_latest=$TAG_LATEST" >> $GITHUB_OUTPUT
+          echo "tag_stable=$TAG_STABLE" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create multi-arch manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          docker buildx imagetools create \
+            --tag ${{ env.SELF_HOSTED_IMAGE }}:v${VERSION} \
+            --tag ${{ env.SELF_HOSTED_IMAGE }}:${VERSION} \
+            ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}-amd64 \
+            ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}-arm64
+          echo "✓ Created ${{ env.SELF_HOSTED_IMAGE }}:v${VERSION}"
+
+      - name: Tag as latest
+        if: steps.version.outputs.tag_latest == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          docker buildx imagetools create \
+            --tag ${{ env.SELF_HOSTED_IMAGE }}:latest \
+            ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}-amd64 \
+            ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}-arm64
+          echo "✓ Tagged ${{ env.SELF_HOSTED_IMAGE }}:latest"
+
+      - name: Tag as stable
+        if: steps.version.outputs.tag_stable == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          docker buildx imagetools create \
+            --tag ${{ env.SELF_HOSTED_IMAGE }}:stable \
+            ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}-amd64 \
+            ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}-arm64
+          echo "✓ Tagged ${{ env.SELF_HOSTED_IMAGE }}:stable"
+
+      - name: Print summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo ""
+          echo "=== Docker Image Published ==="
+          echo ""
+          echo "Self-Hosted (all-in-one):"
+          echo "  - ${{ env.SELF_HOSTED_IMAGE }}:v${VERSION}"
+          echo "  - ${{ env.SELF_HOSTED_IMAGE }}:${VERSION}"
+          if [ "${{ steps.version.outputs.tag_latest }}" = "true" ]; then
+            echo "  - ${{ env.SELF_HOSTED_IMAGE }}:latest"
+          fi
+          if [ "${{ steps.version.outputs.tag_stable }}" = "true" ]; then
+            echo "  - ${{ env.SELF_HOSTED_IMAGE }}:stable"
+          fi
+          echo ""
+          echo "Supported: linux/amd64, linux/arm64"
+
+  generate-docker-manifest:
+    name: Generate Docker Update Manifest
+    needs: [create-manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version and determine tags
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            TAG_STABLE="${{ inputs.tag_stable }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+            if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+              TAG_STABLE="false"
+              echo "Pre-release detected - skipping stable manifest update"
+            else
+              TAG_STABLE="true"
+              echo "Full release detected - will update stable manifest"
+            fi
+          else
+            VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
+            TAG_STABLE="false"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_stable=$TAG_STABLE" >> $GITHUB_OUTPUT
+
+          if git merge-base --is-ancestor ${{ github.sha }} origin/main 2>/dev/null; then
+            echo "is_main=true" >> $GITHUB_OUTPUT
+            echo "✓ Commit is on main branch"
+          else
+            echo "is_main=false" >> $GITHUB_OUTPUT
+            echo "⚠ Commit is NOT on main branch"
+          fi
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: "universal"
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: "https://app.infisical.com"
+          env-slug: "prod"
+          project-slug: "byaan-app-secrets-i-ffg"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate and upload docker-manifest.json
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ env.R2_ENDPOINT }}
+          R2_BUCKET: ${{ env.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL: ${{ env.R2_PUBLIC_URL }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG_STABLE="${{ steps.version.outputs.tag_stable }}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "Generating Docker update manifest for version $VERSION"
+          echo "Tag as stable: $TAG_STABLE"
+
+          DIGEST=$(docker manifest inspect ${{ env.SELF_HOSTED_IMAGE }}:${VERSION} | jq -r '.manifests[0].digest')
+          echo "Image digest: $DIGEST"
+
+          NOTES=$(git log -1 --pretty=%B | head -n 1)
+          echo "Release notes: $NOTES"
+
+          REQUIRES_MIGRATION="true"
+
+          echo "Fetching current stable version from R2..."
+          CURRENT_MANIFEST=$(curl -sf "${R2_PUBLIC_URL}/docker/docker-manifest.json" 2>/dev/null || echo "{}")
+          CURRENT_STABLE_VERSION=$(echo "$CURRENT_MANIFEST" | jq -r '.stable_version // .version // ""' 2>/dev/null)
+          echo "Current stable version: ${CURRENT_STABLE_VERSION:-none}"
+
+          if [ "$TAG_STABLE" = "true" ]; then
+            STABLE_VERSION="$VERSION"
+            echo "Stable release - setting stable_version to: $STABLE_VERSION"
+          elif [ -n "$CURRENT_STABLE_VERSION" ]; then
+            STABLE_VERSION="$CURRENT_STABLE_VERSION"
+            echo "Pre-release - preserving stable_version: $STABLE_VERSION"
+          else
+            STABLE_VERSION="$VERSION"
+            echo "No previous stable version found - defaulting to: $STABLE_VERSION"
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg stable_version "$STABLE_VERSION" \
+            --arg digest "$DIGEST" \
+            --arg notes "$NOTES" \
+            --arg pub_date "$PUB_DATE" \
+            --arg requires_migration "$REQUIRES_MIGRATION" \
+            --arg r2_url "$R2_PUBLIC_URL" \
+            '{
+              version: $version,
+              stable_version: $stable_version,
+              pub_date: $pub_date,
+              notes: $notes,
+              image: {
+                registry: "docker.io",
+                repository: "byaan/self-hosted",
+                tag: $version,
+                stable_tag: "stable",
+                digest: $digest,
+                platforms: ["linux/amd64", "linux/arm64"]
+              },
+              migration_info: {
+                requires_migration: ($requires_migration == "true")
+              },
+              min_compatible_version: "1.0.0",
+              download_url: ($r2_url + "/docker/docker-manifest.json")
+            }' > docker-manifest.json
+
+          echo "✓ Generated docker-manifest.json:"
+          cat docker-manifest.json
+
+          echo ""
+          echo "Uploading to R2 self-hosted channel..."
+          aws s3 cp docker-manifest.json "s3://${R2_BUCKET}/docker/docker-manifest.json" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --acl public-read \
+            --content-type "application/json"
+
+          echo ""
+          echo "Archiving to versions directory..."
+          aws s3 cp docker-manifest.json "s3://${R2_BUCKET}/docker/versions/v${VERSION}/docker-manifest.json" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --acl public-read \
+            --content-type "application/json"
+
+          echo ""
+          echo "✅ Docker update manifest published:"
+          echo "  Latest: ${R2_PUBLIC_URL}/docker/docker-manifest.json"
+          echo "  Archive: ${R2_PUBLIC_URL}/docker/versions/v${VERSION}/docker-manifest.json"

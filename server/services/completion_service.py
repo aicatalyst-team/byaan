@@ -1,0 +1,122 @@
+"""Unified completion service that handles both LiteLLM and Claude Code auth paths."""
+
+import re
+from uuid import UUID
+
+from litellm import acompletion
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from server.services.claude_mcp_service import DISALLOWED_BUILTIN_TOOLS, stream_claude_with_mcp_tools
+from server.services.llm_service import ModelService
+from server.services.unified_agent import is_using_claude_code_auth
+from server.utils.custom_logger import get_logger
+
+logger = get_logger(__name__)
+
+ALL_BUILTIN_TOOLS = [*DISALLOWED_BUILTIN_TOOLS, "Read", "ToolSearch"]
+_TOOL_CALL_RE = re.compile(r"\[\[TOOL_CALL:[^\]]*\]\]")
+
+
+class CompletionService:
+    """Service for simple LLM completions that works with both LiteLLM and Claude Code auth."""
+
+    @staticmethod
+    async def complete(
+        prompt: str,
+        llm_connection_id: UUID | str,
+        session: AsyncSession,
+        system_prompt: str | None = None,
+        use_claude_sdk: bool | None = None,
+    ) -> str | None:
+        """
+        Get a completion from the appropriate LLM based on connection type.
+
+        Args:
+            prompt: The user prompt/message
+            llm_connection_id: The LLM connection to use
+            session: Database session
+            system_prompt: Optional system instructions
+            use_claude_sdk: If provided, skip the DB auth check and use this value directly
+
+        Returns:
+            The completion text, or None if failed
+        """
+        llm_id = str(llm_connection_id)
+
+        try:
+            if use_claude_sdk is None:
+                use_claude_sdk = await is_using_claude_code_auth(llm_id, session)
+
+            if use_claude_sdk:
+                return await CompletionService._complete_with_claude_sdk(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                )
+            else:
+                return await CompletionService._complete_with_litellm(
+                    prompt=prompt,
+                    llm_connection_id=llm_id,
+                    system_prompt=system_prompt,
+                )
+        except Exception as e:
+            logger.error(f"Completion failed: {e}", exc_info=True)
+            return None
+
+    @staticmethod
+    async def _complete_with_claude_sdk(
+        prompt: str,
+        system_prompt: str | None = None,
+    ) -> str | None:
+        """Complete using Claude Code SDK with all builtin tools disabled."""
+        result = ""
+        gen = stream_claude_with_mcp_tools(
+            prompt=prompt,
+            tools=None,
+            model=None,
+            instructions=system_prompt,
+            context=None,
+            disallowed_tools_override=ALL_BUILTIN_TOOLS,
+        )
+        try:
+            async for event in gen:
+                if event.get("type") == "content":
+                    text = event.get("text", "")
+                    if "[[TOOL_CALL:" in text or text.strip() == "Tool executed successfully":
+                        continue
+                    result += text
+                elif event.get("type") == "done":
+                    break
+        finally:
+            try:
+                await gen.aclose()
+            except Exception:
+                pass
+
+        result = _TOOL_CALL_RE.sub("", result)
+        result = result.replace("\n\nTool executed successfully\n\n", "")
+        return result.strip() if result.strip() else None
+
+    @staticmethod
+    async def _complete_with_litellm(
+        prompt: str,
+        llm_connection_id: str,
+        system_prompt: str | None = None,
+    ) -> str | None:
+        """Complete using LiteLLM."""
+        model_instance = await ModelService.get_litellm_model_instance(llm_connection_id)
+        if not model_instance:
+            logger.error(f"Could not create model instance for LLM connection {llm_connection_id}")
+            return None
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        response = await acompletion(
+            model=model_instance.model,
+            messages=messages,
+            temperature=0,
+        )
+        content = response.choices[0].message.content  # type: ignore[union-attr]
+        return content.strip() if content else None

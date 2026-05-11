@@ -1,0 +1,54 @@
+name: Sync Self-Hosted Files
+
+on:
+  release:
+    types: [published]
+  push:
+    paths:
+      - 'docs/self-hosted/**'
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  sync-to-r2:
+    name: Sync to R2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: "universal"
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: "https://app.infisical.com"
+          env-slug: "prod"
+          project-slug: "byaan-app-secrets-i-ffg"
+
+      - name: Sync self-hosted folder to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ env.R2_ENDPOINT }}
+          R2_BUCKET: ${{ env.R2_BUCKET_NAME }}
+        run: |
+          echo "Files to sync:"
+          ls -la docs/self-hosted/
+          echo ""
+
+          echo "Syncing docs/self-hosted/ to R2..."
+          aws s3 sync docs/self-hosted/ "s3://${R2_BUCKET}/docker/" \
+            --endpoint-url "$AWS_ENDPOINT_URL" \
+            --acl public-read
+
+          echo ""
+          echo "Uploaded files:"
+          aws s3 ls "s3://${R2_BUCKET}/docker/" --endpoint-url "$AWS_ENDPOINT_URL"
+
+          echo ""
+          echo "=== Install Command ==="
+          echo "curl -fsSL https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/install.sh | bash"
