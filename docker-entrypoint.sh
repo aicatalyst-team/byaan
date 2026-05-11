@@ -4,6 +4,28 @@ set -e
 SERVICE_TYPE=${1:-server}
 shift
 
+wait_for_backend() {
+    API_URL="${VITE_API_URL:-http://server:8000}"
+    HEALTH_URL="${API_URL%/}/health"
+    MAX_ATTEMPTS="${BACKEND_WAIT_ATTEMPTS:-60}"
+
+    echo "Waiting for backend health check: ${HEALTH_URL}"
+    for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+        if node -e "fetch(process.argv[1]).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" "$HEALTH_URL"; then
+            echo "Backend is ready."
+            return 0
+        fi
+
+        if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
+            echo "Backend did not become ready after ${MAX_ATTEMPTS} seconds."
+            echo "Check server logs with: docker compose logs server"
+            return 1
+        fi
+
+        sleep 1
+    done
+}
+
 case "$SERVICE_TYPE" in
     server)
         echo "=== Starting server initialization ==="
@@ -50,11 +72,17 @@ case "$SERVICE_TYPE" in
             echo | pnpm install
         fi
 
-        echo "=== Starting client application ==="
+        if [ "${WAIT_FOR_BACKEND:-false}" = "true" ]; then
+            wait_for_backend
+        fi
+
         HOST_PORT="${FRONTEND_PORT:-5173}"
-        echo ""
-        echo "  App available at: http://localhost:${HOST_PORT}/"
-        echo ""
+        echo "=== Starting client application ==="
+        if [ "${PRINT_CLIENT_URL:-true}" = "true" ]; then
+            echo ""
+            echo "  Open Byaan in your browser: http://localhost:${HOST_PORT}/"
+            echo ""
+        fi
         if [ "$VITE_DEV_MODE" = "true" ]; then
             echo "Starting client in DEVELOPMENT mode (Vite dev server)..."
             exec pnpm run dev --host 0.0.0.0 --port 5173 "$@"

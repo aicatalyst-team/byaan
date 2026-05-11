@@ -7,19 +7,19 @@ setup:
 	docker compose build
 
 dev:
-	docker compose up
+	bash scripts/dev.sh up
 
 dev-detach:
-	docker compose up -d
+	bash scripts/dev.sh detach
+
+dev-logs:
+	docker compose logs -f
 
 dev-build:
-	docker compose build
-	docker compose up
+	bash scripts/dev.sh build
 
 rebuild:
-	docker compose down -v
-	docker compose build --no-cache
-	docker compose up
+	bash scripts/dev.sh rebuild
 
 stop:
 	docker compose down
