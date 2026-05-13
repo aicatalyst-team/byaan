@@ -59,44 +59,6 @@ export default function NotebookHistory({ onNotebookClick }: NotebookHistoryProp
     }
   }, [pendingShareNotebook, latestDashboardVersion])
 
-  // Group notebooks by date
-  const groupNotebooksByDate = (notebooks: any[]) => {
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-
-    const sortedNotebooks = [...notebooks].sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    )
-
-    const groups: { [key: string]: any[] } = {}
-
-    sortedNotebooks.forEach((notebook) => {
-      const notebookDate = new Date(notebook.created_at)
-      const notebookDateStr = notebookDate.toDateString()
-
-      if (notebookDateStr === today.toDateString()) {
-        if (!groups.Today) groups.Today = []
-        groups.Today.push(notebook)
-      } else if (notebookDateStr === yesterday.toDateString()) {
-        if (!groups.Yesterday) groups.Yesterday = []
-        groups.Yesterday.push(notebook)
-      } else {
-        // Format date as "January 15, 2024" for older dates
-        const formattedDate = notebookDate.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'numeric',
-          day: 'numeric'
-        })
-        if (!groups[formattedDate]) groups[formattedDate] = []
-        groups[formattedDate].push(notebook)
-      }
-    })
-
-    return groups
-  }
-
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -258,23 +220,16 @@ export default function NotebookHistory({ onNotebookClick }: NotebookHistoryProp
     )
   }
 
-  const groupedNotebooks = groupNotebooksByDate(notebooks)
+  const sortedNotebooks = [...notebooks].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
 
   return (
     <div className="flex flex-col h-full">
       {/* Scrollable Projects Section */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="space-y-3">
-          {Object.entries(groupedNotebooks).map(([dateLabel, dateNotebooks]) => {
-            if (dateNotebooks.length === 0) return null
-
-            return (
-              <div key={dateLabel}>
-                <div className="text-xs text-gray-400 mb-1.5 px-3">
-                  {dateLabel}
-                </div>
-                <div className="space-y-0.5">
-                  {dateNotebooks.map((notebook) => (
+        <div className="space-y-0.5">
+          {sortedNotebooks.map((notebook) => (
                     <div
                       key={notebook.id}
                       className={`relative group flex items-center gap-1 px-3 py-1 transition-colors ${
@@ -363,11 +318,7 @@ export default function NotebookHistory({ onNotebookClick }: NotebookHistoryProp
                         )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
+          ))}
         </div>
       </div>
 

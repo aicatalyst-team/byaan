@@ -81,6 +81,7 @@ export function NotebookQueryPanel({ notebookId, initialQuery, initialQueryVersi
   const notebookDatasourcesChangedTrigger = useStore(state => state.notebookDatasourcesChangedTrigger)
   const selectedConnectionIdRef = useRef<string | null>(null)
   const previousNotebookIdRef = useRef<string | undefined>()
+  const injectedRetryKeyRef = useRef<string | null>(null)
 
   const [allNotebookConnections, setAllNotebookConnections] = useState<any[]>([])
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
@@ -346,14 +347,25 @@ export function NotebookQueryPanel({ notebookId, initialQuery, initialQueryVersi
 
   // Handle injected connection ID from tool calls
   useEffect(() => {
-    if (injectedConnectionId && allNotebookConnections.length > 0) {
+    if (!injectedConnectionId) return
+
+    const matched = allNotebookConnections.find(
+      c => c.id === injectedConnectionId || c.connection_id === injectedConnectionId
+    )
+
+    if (matched) {
       handleConnectionChange(injectedConnectionId)
-    } else if (injectedConnectionId && allNotebookConnections.length === 0 && !isLoadingConnection) {
-      const retryTimer = setTimeout(() => {
-        loadNotebookConnection()
-      }, 500)
-      return () => clearTimeout(retryTimer)
+      injectedRetryKeyRef.current = null
+      return
     }
+
+    if (isLoadingConnection) return
+
+    // Force one fresh reload per (id+version) pair to avoid loops.
+    const retryKey = `${injectedConnectionId}::${injectedQueryVersion ?? 0}`
+    if (injectedRetryKeyRef.current === retryKey) return
+    injectedRetryKeyRef.current = retryKey
+    void loadNotebookConnection()
   }, [injectedConnectionId, injectedQueryVersion, allNotebookConnections, handleConnectionChange, isLoadingConnection, loadNotebookConnection])
 
   // Watch for query saved trigger and reload queries
