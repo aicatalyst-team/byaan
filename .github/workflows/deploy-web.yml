@@ -31,6 +31,26 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate deployment source
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production web deploys must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] \
+            && [ "$GITHUB_REF" != "refs/heads/main" ] \
+            && [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "Staging web deploys must be dispatched from main or develop."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          echo "Trusted deployment source verified."
+
       - name: Fetch secrets from Infisical
         uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:

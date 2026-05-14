@@ -25,9 +25,11 @@ Privileged workflows should:
 - declare least-privilege `permissions`
 - use GitHub Environments for production/staging approval gates
 - avoid checking out or executing fork PR code
+- validate the source ref before loading secrets; production release and Docker dispatches must run from `main`, and release tags must point to commits contained in `origin/main`
 - use non-canceling `concurrency` for publishing jobs
 - pass secrets only to the step that needs them
 - avoid printing secret-derived values or generated config containing secrets
+- do not ship OAuth client secrets in desktop or browser artifacts; use PKCE, user-supplied self-hosted settings, or a server-side exchange instead
 
 ## Required Repository Settings
 
@@ -37,6 +39,7 @@ Configure these in GitHub after merging the workflow files:
 - Require review from CODEOWNERS for `.github/**`, lockfiles, Docker files, package manifests, and release config.
 - Require approval before running workflows from first-time contributors.
 - Restrict who can run `workflow_dispatch` release, deploy, Docker, R2, and promotion workflows.
+- Protect `main`, require CODEOWNER approval, and require the CI/security checks above before merge. Workflow hardening prevents direct PR secret exposure, but a malicious change that is reviewed and merged can still run later in release/deploy jobs.
 - Enable secret scanning and push protection.
 - Enable Dependabot alerts and dependency graph.
 - Enable CodeQL after the repository is public or GitHub Code Security is available. Private repositories without Code Security cannot upload CodeQL code-scanning results.

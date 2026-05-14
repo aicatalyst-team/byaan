@@ -50,6 +50,25 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Release builds with production credentials must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before production credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted release source verified."
 
       - name: Fetch secrets from Infisical
         uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
@@ -110,11 +129,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Add uv to PATH
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Setup uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Prepare macOS keychain and import certificate
         env:
@@ -140,7 +159,6 @@ jobs:
           VITE_PUBLIC_POSTHOG_HOST: ${{ env.VITE_PUBLIC_POSTHOG_HOST }}
           WORKER_URL: ${{ env.WORKER_URL }}
           GITHUB_OAUTH_CLIENT_ID: ${{ env.GITHUB_OAUTH_CLIENT_ID }}
-          GITHUB_OAUTH_CLIENT_SECRET: ${{ env.GITHUB_OAUTH_CLIENT_SECRET }}
         run: |
           mkdir -p client/src-tauri/resources
 
@@ -160,7 +178,7 @@ jobs:
             },
             "github": {
               "client_id": "$GITHUB_OAUTH_CLIENT_ID",
-              "client_secret": "$GITHUB_OAUTH_CLIENT_SECRET"
+              "client_secret": null
             }
           }
           EOF
@@ -168,7 +186,6 @@ jobs:
             sed -i.bak "s|\$VITE_PUBLIC_POSTHOG_HOST|$VITE_PUBLIC_POSTHOG_HOST|g" client/src-tauri/resources/config.json
             sed -i.bak "s|\$WORKER_URL|$WORKER_URL|g" client/src-tauri/resources/config.json
             sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_ID|$GITHUB_OAUTH_CLIENT_ID|g" client/src-tauri/resources/config.json
-            sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_SECRET|$GITHUB_OAUTH_CLIENT_SECRET|g" client/src-tauri/resources/config.json
             rm -f client/src-tauri/resources/config.json.bak
           else
             echo "Creating config.json with PostHog disabled..."
@@ -186,13 +203,12 @@ jobs:
             },
             "github": {
               "client_id": "$GITHUB_OAUTH_CLIENT_ID",
-              "client_secret": "$GITHUB_OAUTH_CLIENT_SECRET"
+              "client_secret": null
             }
           }
           EOF
             sed -i.bak "s|\$WORKER_URL|$WORKER_URL|g" client/src-tauri/resources/config.json
             sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_ID|$GITHUB_OAUTH_CLIENT_ID|g" client/src-tauri/resources/config.json
-            sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_SECRET|$GITHUB_OAUTH_CLIENT_SECRET|g" client/src-tauri/resources/config.json
             rm -f client/src-tauri/resources/config.json.bak
           fi
           echo "✓ Config created (required by backend.spec)"
@@ -304,7 +320,7 @@ jobs:
           echo "✅ Version $APP_VERSION injected into tauri.conf.json"
 
       - name: Install frontend dependencies
-        run: cd client && pnpm install
+        run: cd client && pnpm install --frozen-lockfile
 
       - name: Sync Python dependencies
         run: |
@@ -557,6 +573,18 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before the GitHub token can create a release."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted release source verified."
+
       - name: Extract version and check if on main
         id: version
         run: |
@@ -625,6 +653,18 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before production credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted release source verified."
 
       - name: Fetch secrets from Infisical
         uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
