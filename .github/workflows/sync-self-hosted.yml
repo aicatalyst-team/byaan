@@ -35,8 +35,6 @@ jobs:
 
       - name: Validate trusted sync source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may publish self-hosted files to R2."
             echo "Current actor: $GITHUB_ACTOR"
