@@ -33,13 +33,13 @@ Privileged workflows should:
 
 Configure these in GitHub after merging the workflow files:
 
-- Require `Pull Request CI`, `Dependency Review`, `CodeQL`, and `Workflow Security` before merging to `main`.
+- Require `Pull Request CI`, `Dependency Review`, and `Workflow Security` before merging to `main`.
 - Require review from CODEOWNERS for `.github/**`, lockfiles, Docker files, package manifests, and release config.
 - Require approval before running workflows from first-time contributors.
 - Restrict who can run `workflow_dispatch` release, deploy, Docker, R2, and promotion workflows.
 - Enable secret scanning and push protection.
 - Enable Dependabot alerts and dependency graph.
-- Enable CodeQL default setup or keep the committed CodeQL workflow enabled.
+- Enable CodeQL after the repository is public or GitHub Code Security is available. Private repositories without Code Security cannot upload CodeQL code-scanning results.
 - Configure `production` and `staging` environments with required reviewers before exposing deployment or signing secrets there. Empty environments are enough to start jobs, but they do not provide a review gate or scoped secrets.
 
 ## Incident Class Covered
