@@ -127,5 +127,3 @@ async def fetch_relevant_learnings(
     except Exception as e:
         logger.warning(f"Failed to fetch learnings for MCP: {e}")
         return None
-
-

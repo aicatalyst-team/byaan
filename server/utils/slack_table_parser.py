@@ -91,6 +91,7 @@ class SlackTableParser:
 
         if max_cols != min_cols:
             from server.utils.custom_logger import get_logger
+
             logger = get_logger(__name__)
             logger.warning(
                 f"Uneven table detected: max_cols={max_cols}, min_cols={min_cols}. "

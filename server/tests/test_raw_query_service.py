@@ -2,7 +2,6 @@
 Tests for AsyncRawQueryService — DuckDB literal rendering, parameter inlining, routing.
 """
 
-import math
 from datetime import date, datetime, time
 from decimal import Decimal
 
@@ -10,10 +9,10 @@ import pytest
 
 from server.services.raw_query import AsyncRawQueryService
 
-
 # ---------------------------------------------------------------------------
 # _duckdb_sql_literal
 # ---------------------------------------------------------------------------
+
 
 class TestDuckdbSqlLiteral:
     def test_none(self):
@@ -75,6 +74,7 @@ class TestDuckdbSqlLiteral:
 # _inline_duckdb_params
 # ---------------------------------------------------------------------------
 
+
 class TestInlineDuckdbParams:
     def test_no_params_returns_query(self):
         query = "SELECT * FROM data"
@@ -93,9 +93,7 @@ class TestInlineDuckdbParams:
 
     def test_multiple_params(self):
         query = "SELECT * FROM data WHERE name = :name AND age > :age"
-        result = AsyncRawQueryService._inline_duckdb_params(
-            query, {"name": "Alice", "age": 25}
-        )
+        result = AsyncRawQueryService._inline_duckdb_params(query, {"name": "Alice", "age": 25})
         assert "'Alice'" in result
         assert "25" in result
         assert ":name" not in result
@@ -114,18 +112,14 @@ class TestInlineDuckdbParams:
     def test_longer_param_name_replaced_first(self):
         # Params sorted by length descending to avoid partial replacement
         query = "SELECT * FROM data WHERE val = :val AND value = :value"
-        result = AsyncRawQueryService._inline_duckdb_params(
-            query, {"val": 1, "value": 2}
-        )
+        result = AsyncRawQueryService._inline_duckdb_params(query, {"val": 1, "value": 2})
         assert "value = 2" in result
         assert ":val" not in result
         assert ":value" not in result
 
     def test_param_with_special_chars_in_value(self):
         query = "SELECT * FROM data WHERE name = :name"
-        result = AsyncRawQueryService._inline_duckdb_params(
-            query, {"name": "O'Brien"}
-        )
+        result = AsyncRawQueryService._inline_duckdb_params(query, {"name": "O'Brien"})
         assert "O''Brien" in result
 
 
@@ -133,11 +127,14 @@ class TestInlineDuckdbParams:
 # execute_raw_query routing
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteRawQueryRouting:
     @pytest.mark.asyncio
     async def test_missing_connection_obj(self):
         result = await AsyncRawQueryService.execute_raw_query(
-            query="SELECT 1", db_type="pg", connection_id="conn-1",
+            query="SELECT 1",
+            db_type="pg",
+            connection_id="conn-1",
             connection_obj=None,
         )
         assert "error" in result
@@ -146,7 +143,9 @@ class TestExecuteRawQueryRouting:
     @pytest.mark.asyncio
     async def test_unsupported_db_type(self):
         result = await AsyncRawQueryService.execute_raw_query(
-            query="SELECT 1", db_type="oracle", connection_id="conn-1",
+            query="SELECT 1",
+            db_type="oracle",
+            connection_id="conn-1",
             connection_obj={"host": "localhost"},
         )
         assert result.get("success") is False
@@ -179,6 +178,11 @@ class TestExecuteRawQueryRouting:
             query='{"operation": "put_item", "table": "Users"}',
             db_type="dynamodb",
             connection_id="conn-1",
-            connection_obj={"region": "us-east-1", "access_key_id": "x", "secret_access_key": "y", "query_mode": "native"},
+            connection_obj={
+                "region": "us-east-1",
+                "access_key_id": "x",
+                "secret_access_key": "y",
+                "query_mode": "native",
+            },
         )
         assert result.get("success") is False

@@ -93,7 +93,6 @@ def _find_block_start(lines: list[str], block_lines: list[str]) -> int:
             )
 
     # Fallback to fuzzy match on full block string
-    haystack = "\n".join(lines)
     needle = "\n".join(block_lines)
     best_score = 0.0
     best_index = -1

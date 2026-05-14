@@ -6,11 +6,6 @@ before executing queries. These tests verify that redacted tables and columns
 are blocked at the tool level.
 """
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 from server.services.redaction_service import RedactionService
 
 
@@ -39,6 +34,7 @@ class FakeDataset:
 # ---------------------------------------------------------------------------
 # SQL Tool Redaction Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSqlToolRedaction:
     """Tests redaction logic from server/tools/sql.py execute_sql_query."""
@@ -85,48 +81,39 @@ class TestSqlToolRedaction:
 
     def test_blocks_redacted_table(self):
         rules = {"conn-1": {"tables": ["secret_data"], "columns": {}}}
-        result = self._simulate_sql_redaction_check(
-            "SELECT * FROM secret_data", "conn-1", rules
-        )
+        result = self._simulate_sql_redaction_check("SELECT * FROM secret_data", "conn-1", rules)
         assert result is not None
         assert result["blocked"] is True
         assert "secret_data" in result["reason"]
 
     def test_allows_non_redacted_table(self):
         rules = {"conn-1": {"tables": ["secret_data"], "columns": {}}}
-        result = self._simulate_sql_redaction_check(
-            "SELECT * FROM public_data", "conn-1", rules
-        )
+        result = self._simulate_sql_redaction_check("SELECT * FROM public_data", "conn-1", rules)
         assert result is None
 
     def test_blocks_redacted_column(self):
         rules = {"conn-1": {"tables": [], "columns": {"users": ["ssn", "password"]}}}
-        result = self._simulate_sql_redaction_check(
-            "SELECT ssn FROM users", "conn-1", rules
-        )
+        result = self._simulate_sql_redaction_check("SELECT ssn FROM users", "conn-1", rules)
         assert result is not None
         assert result["blocked"] is True
         assert "ssn" in result["reason"]
 
     def test_allows_non_redacted_column(self):
         rules = {"conn-1": {"tables": [], "columns": {"users": ["ssn"]}}}
-        result = self._simulate_sql_redaction_check(
-            "SELECT name, email FROM users", "conn-1", rules
-        )
+        result = self._simulate_sql_redaction_check("SELECT name, email FROM users", "conn-1", rules)
         assert result is None
 
     def test_no_rules_for_connection(self):
         rules = {"other-conn": {"tables": ["secret"], "columns": {}}}
-        result = self._simulate_sql_redaction_check(
-            "SELECT * FROM secret", "conn-1", rules
-        )
+        result = self._simulate_sql_redaction_check("SELECT * FROM secret", "conn-1", rules)
         assert result is None
 
     def test_blocks_redacted_table_in_join(self):
         rules = {"conn-1": {"tables": ["secret_data"], "columns": {}}}
         result = self._simulate_sql_redaction_check(
             "SELECT u.name FROM users u JOIN secret_data s ON u.id = s.user_id",
-            "conn-1", rules,
+            "conn-1",
+            rules,
         )
         assert result is not None
         assert result["blocked"] is True
@@ -135,7 +122,8 @@ class TestSqlToolRedaction:
         rules = {"conn-1": {"tables": [], "columns": {"users": ["ssn"]}}}
         result = self._simulate_sql_redaction_check(
             "SELECT name FROM users WHERE ssn = '123'",
-            "conn-1", rules,
+            "conn-1",
+            rules,
         )
         assert result is not None
         assert result["blocked"] is True
@@ -144,6 +132,7 @@ class TestSqlToolRedaction:
 # ---------------------------------------------------------------------------
 # MongoDB Tool Redaction Tests
 # ---------------------------------------------------------------------------
+
 
 class TestMongoToolRedaction:
     """Tests redaction logic from server/tools/mongo.py execute_mongo_query."""
@@ -169,45 +158,36 @@ class TestMongoToolRedaction:
 
     def test_blocks_redacted_collection(self):
         rules = {"conn-1": {"tables": ["secret_logs"], "columns": {}}}
-        result = self._simulate_mongo_redaction_check(
-            "secret_logs", "find", "conn-1", rules
-        )
+        result = self._simulate_mongo_redaction_check("secret_logs", "find", "conn-1", rules)
         assert result is not None
         assert result["blocked"] is True
 
     def test_allows_non_redacted_collection(self):
         rules = {"conn-1": {"tables": ["secret_logs"], "columns": {}}}
-        result = self._simulate_mongo_redaction_check(
-            "public_logs", "find", "conn-1", rules
-        )
+        result = self._simulate_mongo_redaction_check("public_logs", "find", "conn-1", rules)
         assert result is None
 
     def test_blocks_distinct_on_redacted_field(self):
         rules = {"conn-1": {"tables": [], "columns": {"users": ["ssn"]}}}
-        result = self._simulate_mongo_redaction_check(
-            "users", "distinct", "conn-1", rules, args=["ssn"]
-        )
+        result = self._simulate_mongo_redaction_check("users", "distinct", "conn-1", rules, args=["ssn"])
         assert result is not None
         assert "ssn" in result["reason"]
 
     def test_allows_distinct_on_non_redacted_field(self):
         rules = {"conn-1": {"tables": [], "columns": {"users": ["ssn"]}}}
-        result = self._simulate_mongo_redaction_check(
-            "users", "distinct", "conn-1", rules, args=["name"]
-        )
+        result = self._simulate_mongo_redaction_check("users", "distinct", "conn-1", rules, args=["name"])
         assert result is None
 
     def test_no_rules_for_connection(self):
         rules = {"other-conn": {"tables": ["secret"], "columns": {}}}
-        result = self._simulate_mongo_redaction_check(
-            "secret", "find", "conn-1", rules
-        )
+        result = self._simulate_mongo_redaction_check("secret", "find", "conn-1", rules)
         assert result is None
 
 
 # ---------------------------------------------------------------------------
 # DuckDB Tool Redaction Tests
 # ---------------------------------------------------------------------------
+
 
 class TestDuckdbToolRedaction:
     """Tests redaction logic from server/tools/dataframe.py execute_duckdb_query."""
@@ -254,24 +234,18 @@ class TestDuckdbToolRedaction:
 
     def test_blocks_redacted_file_alias(self):
         rules = {"ds-1": {"tables": ["sensitive_data"], "columns": {}}}
-        result = self._simulate_duckdb_redaction_check(
-            "SELECT * FROM sensitive_data", "ds-1", rules
-        )
+        result = self._simulate_duckdb_redaction_check("SELECT * FROM sensitive_data", "ds-1", rules)
         assert result is not None
         assert result["blocked"] is True
 
     def test_allows_non_redacted_file(self):
         rules = {"ds-1": {"tables": ["sensitive_data"], "columns": {}}}
-        result = self._simulate_duckdb_redaction_check(
-            "SELECT * FROM public_data", "ds-1", rules
-        )
+        result = self._simulate_duckdb_redaction_check("SELECT * FROM public_data", "ds-1", rules)
         assert result is None
 
     def test_blocks_redacted_column_in_file(self):
         rules = {"ds-1": {"tables": [], "columns": {"sales": ["credit_card"]}}}
-        result = self._simulate_duckdb_redaction_check(
-            "SELECT credit_card FROM sales", "ds-1", rules
-        )
+        result = self._simulate_duckdb_redaction_check("SELECT credit_card FROM sales", "ds-1", rules)
         assert result is not None
         assert "credit_card" in result["reason"]
 
@@ -279,6 +253,7 @@ class TestDuckdbToolRedaction:
 # ---------------------------------------------------------------------------
 # DynamoDB Tool Redaction Tests
 # ---------------------------------------------------------------------------
+
 
 class TestDynamodbToolRedaction:
     """Tests redaction logic from server/tools/dynamodb.py execute_dynamodb_query."""
@@ -307,7 +282,9 @@ class TestDynamodbToolRedaction:
         rules = {"conn-1": {"tables": ["SecretTable"], "columns": {}}}
         result = self._simulate_dynamodb_redaction_check(
             "SELECT * FROM SecretTable WHERE id = 'abc'",
-            "conn-1", rules, query_mode="partiql",
+            "conn-1",
+            rules,
+            query_mode="partiql",
         )
         assert result is not None
         assert result["blocked"] is True
@@ -316,21 +293,29 @@ class TestDynamodbToolRedaction:
         rules = {"conn-1": {"tables": ["SecretTable"], "columns": {}}}
         result = self._simulate_dynamodb_redaction_check(
             "SELECT * FROM PublicTable WHERE id = 'abc'",
-            "conn-1", rules, query_mode="partiql",
+            "conn-1",
+            rules,
+            query_mode="partiql",
         )
         assert result is None
 
     def test_blocks_redacted_table_native(self):
         rules = {"conn-1": {"tables": ["SecretTable"], "columns": {}}}
         result = self._simulate_dynamodb_redaction_check(
-            "SecretTable", "conn-1", rules, query_mode="native",
+            "SecretTable",
+            "conn-1",
+            rules,
+            query_mode="native",
         )
         assert result is not None
 
     def test_allows_non_redacted_table_native(self):
         rules = {"conn-1": {"tables": ["SecretTable"], "columns": {}}}
         result = self._simulate_dynamodb_redaction_check(
-            "PublicTable", "conn-1", rules, query_mode="native",
+            "PublicTable",
+            "conn-1",
+            rules,
+            query_mode="native",
         )
         assert result is None
 
@@ -338,6 +323,7 @@ class TestDynamodbToolRedaction:
 # ---------------------------------------------------------------------------
 # Result-Level Redaction Tests (RedactionService.redact_result_rows)
 # ---------------------------------------------------------------------------
+
 
 class TestResultLevelRedaction:
     """Tests that RedactionService.redact_result_rows masks values correctly."""

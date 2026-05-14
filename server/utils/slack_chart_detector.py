@@ -45,7 +45,7 @@ class SlackChartDetector:
             logger.info(f"Processing table {idx + 1}/{len(all_tables)} with {len(rows) - 1} data rows")
 
             try:
-                table_preview = "\n".join([" | ".join(row) for row in rows[:min(len(rows), 25)]])
+                table_preview = "\n".join([" | ".join(row) for row in rows[: min(len(rows), 25)]])
 
                 prompt = f"""Analyze this data table and determine the best chart configuration.
 
@@ -101,7 +101,9 @@ If the table cannot be charted (no numeric data, all IDs or sequential numbers, 
                 cleaned_result = cleaned_result.strip()
 
                 if not cleaned_result:
-                    logger.info(f"LLM chart table {idx + 1}: response became empty after cleaning. Original: '{result[:100]}'")
+                    logger.info(
+                        f"LLM chart table {idx + 1}: response became empty after cleaning. Original: '{result[:100]}'"
+                    )
                     continue
 
                 try:
@@ -134,11 +136,15 @@ If the table cannot be charted (no numeric data, all IDs or sequential numbers, 
 
                 chart_type = chart_type_mapping.get(llm_chart_type, "bar")
 
-                logger.info(f"LLM chart table {idx + 1} decision: labels_col={labels_col_idx}, series_cols={series_col_indices}, type={llm_chart_type} -> {chart_type}")
+                logger.info(
+                    f"LLM chart table {idx + 1} decision: labels_col={labels_col_idx}, series_cols={series_col_indices}, type={llm_chart_type} -> {chart_type}"
+                )
 
                 data_rows = rows[1:]
-                labels = [row[labels_col_idx] if labels_col_idx < len(row) else f"Row {i+1}"
-                         for i, row in enumerate(data_rows)]
+                labels = [
+                    row[labels_col_idx] if labels_col_idx < len(row) else f"Row {i + 1}"
+                    for i, row in enumerate(data_rows)
+                ]
 
                 datasets = []
                 for col_idx in series_col_indices:
@@ -154,7 +160,31 @@ If the table cannot be charted (no numeric data, all IDs or sequential numbers, 
                                 cleaned = str(row[col_idx])
                                 cleaned = cleaned.replace("$", "").replace("€", "").replace("£", "").replace("¥", "")
                                 cleaned = cleaned.replace("%", "").replace(",", "")
-                                for unit in [" minutes", " mins", " min", " hours", " hrs", " hr", " seconds", " secs", " sec", " days", " day", " weeks", " week", " months", " month", " years", " year", " kg", " km", " mi", " ft", " m", " cm"]:
+                                for unit in [
+                                    " minutes",
+                                    " mins",
+                                    " min",
+                                    " hours",
+                                    " hrs",
+                                    " hr",
+                                    " seconds",
+                                    " secs",
+                                    " sec",
+                                    " days",
+                                    " day",
+                                    " weeks",
+                                    " week",
+                                    " months",
+                                    " month",
+                                    " years",
+                                    " year",
+                                    " kg",
+                                    " km",
+                                    " mi",
+                                    " ft",
+                                    " m",
+                                    " cm",
+                                ]:
                                     cleaned = cleaned.replace(unit, "")
                                 cleaned = cleaned.strip()
                                 val = float(cleaned)
@@ -164,10 +194,12 @@ If the table cannot be charted (no numeric data, all IDs or sequential numbers, 
                         else:
                             values.append(None)
 
-                    datasets.append({
-                        "label": col_name,
-                        "data": values,
-                    })
+                    datasets.append(
+                        {
+                            "label": col_name,
+                            "data": values,
+                        }
+                    )
 
                 if not datasets:
                     logger.info(f"LLM chart table {idx + 1}: no valid datasets")
@@ -175,7 +207,9 @@ If the table cannot be charted (no numeric data, all IDs or sequential numbers, 
 
                 logger.info(f"LLM chart table {idx + 1} labels: {labels[:10]}{'...' if len(labels) > 10 else ''}")
                 for ds in datasets:
-                    logger.info(f"LLM chart table {idx + 1} dataset '{ds['label']}': {ds['data'][:10]}{'...' if len(ds['data']) > 10 else ''}")
+                    logger.info(
+                        f"LLM chart table {idx + 1} dataset '{ds['label']}': {ds['data'][:10]}{'...' if len(ds['data']) > 10 else ''}"
+                    )
 
                 chart_url = ChartService.generate_chart_url(
                     chart_type=chart_type,
@@ -183,7 +217,9 @@ If the table cannot be charted (no numeric data, all IDs or sequential numbers, 
                     datasets=datasets,
                 )
 
-                logger.info(f"LLM chart table {idx + 1} generated: {chart_type} with {len(datasets)} datasets, URL length: {len(chart_url)}")
+                logger.info(
+                    f"LLM chart table {idx + 1} generated: {chart_type} with {len(datasets)} datasets, URL length: {len(chart_url)}"
+                )
                 chart_urls.append(chart_url)
 
             except Exception as e:

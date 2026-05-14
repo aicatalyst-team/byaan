@@ -81,6 +81,7 @@ class ConnectionTestHelper:
     @staticmethod
     async def create_connection(session: AsyncSession, conn_type: str, connection_obj: dict) -> str:
         from sqlalchemy import select
+
         from server.models.tenant import Tenant
 
         result = await session.execute(select(Tenant).limit(1))

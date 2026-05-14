@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -7,8 +8,6 @@ from fastapi_users.password import PasswordHelper
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from unittest.mock import patch
 
 from server.models.refresh_token import RefreshToken
 from server.models.user import User

@@ -10,7 +10,6 @@ import asyncio
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tests.fixtures.notebooks_fixtures import ConnectionTestHelper, NotebookTestHelper, WorkflowTestHelper
 
 
@@ -205,15 +204,15 @@ class TestMultipleConnectionsWorkflow:
     ):
         notebook_id = sample_notebook["id"]
 
-        pg_response = await notebook_helper.connect_with_new_connection(
+        await notebook_helper.connect_with_new_connection(
             test_client, notebook_id, sample_pg_connection["type"], sample_pg_connection["connection_obj"]
         )
 
-        mongo_response = await notebook_helper.connect_with_new_connection(
+        await notebook_helper.connect_with_new_connection(
             test_client, notebook_id, sample_mongo_connection["type"], sample_mongo_connection["connection_obj"]
         )
 
-        sqlite_response = await notebook_helper.connect_with_new_connection(
+        await notebook_helper.connect_with_new_connection(
             test_client, notebook_id, sample_sqlite_connection["type"], sample_sqlite_connection["connection_obj"]
         )
 

@@ -12,11 +12,26 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-r2-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   test-r2-upload:
     name: Test R2 Upload
     runs-on: ubuntu-latest
+    environment: production
+    env:
+      TEST_PATH_INPUT: ${{ inputs.test_path }}
     steps:
+      - name: Validate authorized actor
+        run: |
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run R2 credential test workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
       - name: Generate test file
         run: |
           mkdir -p test-files
@@ -57,7 +72,7 @@ jobs:
           AWS_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
         run: |
-          TEST_PATH="${{ inputs.test_path }}"
+          TEST_PATH="$TEST_PATH_INPUT"
 
           echo "Testing R2 upload..."
           echo "Bucket: ${R2_BUCKET}"

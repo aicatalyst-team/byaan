@@ -24,7 +24,7 @@ function getRuntimeConfig(): RuntimeConfig {
   const isHosted = runtimeConfig.isHosted ?? (import.meta.env.VITE_IS_HOSTED === 'true')
   const isSelfHosted = runtimeConfig.isSelfHosted ?? (import.meta.env.VITE_IS_SELF_HOSTED === 'true')
 
-  let apiUrl = runtimeConfig.apiUrl ?? ''
+  const apiUrl = runtimeConfig.apiUrl ?? ''
 
   return {
     apiUrl,

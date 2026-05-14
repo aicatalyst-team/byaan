@@ -14,7 +14,7 @@ class MCPSessionRepository:
         self._session = session
 
     async def get_by_session_id(self, session_id: str) -> MCPSession | None:
-        query = select(MCPSession).where(MCPSession.session_id == session_id, MCPSession.is_active == True)
+        query = select(MCPSession).where(MCPSession.session_id == session_id, MCPSession.is_active.is_(True))
         result = await self._session.execute(query)
         return result.scalar_one_or_none()
 

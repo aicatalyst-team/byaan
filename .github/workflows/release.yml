@@ -11,13 +11,22 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-artifacts:
     name: Build ${{ matrix.arch }} macOS
     permissions:
-      contents: write
+      contents: read
+    environment: production
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      REF_TYPE: ${{ github.ref_type }}
+      VERSION_INPUT: ${{ inputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -38,10 +47,37 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run production release workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Release builds with production credentials must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before production credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted release source verified."
 
       - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: "universal"
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -82,30 +118,28 @@ jobs:
           fi
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+        run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.10.0 --activate
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Add uv to PATH
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Setup uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Prepare macOS keychain and import certificate
         env:
@@ -131,7 +165,6 @@ jobs:
           VITE_PUBLIC_POSTHOG_HOST: ${{ env.VITE_PUBLIC_POSTHOG_HOST }}
           WORKER_URL: ${{ env.WORKER_URL }}
           GITHUB_OAUTH_CLIENT_ID: ${{ env.GITHUB_OAUTH_CLIENT_ID }}
-          GITHUB_OAUTH_CLIENT_SECRET: ${{ env.GITHUB_OAUTH_CLIENT_SECRET }}
         run: |
           mkdir -p client/src-tauri/resources
 
@@ -151,7 +184,7 @@ jobs:
             },
             "github": {
               "client_id": "$GITHUB_OAUTH_CLIENT_ID",
-              "client_secret": "$GITHUB_OAUTH_CLIENT_SECRET"
+              "client_secret": null
             }
           }
           EOF
@@ -159,7 +192,6 @@ jobs:
             sed -i.bak "s|\$VITE_PUBLIC_POSTHOG_HOST|$VITE_PUBLIC_POSTHOG_HOST|g" client/src-tauri/resources/config.json
             sed -i.bak "s|\$WORKER_URL|$WORKER_URL|g" client/src-tauri/resources/config.json
             sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_ID|$GITHUB_OAUTH_CLIENT_ID|g" client/src-tauri/resources/config.json
-            sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_SECRET|$GITHUB_OAUTH_CLIENT_SECRET|g" client/src-tauri/resources/config.json
             rm -f client/src-tauri/resources/config.json.bak
           else
             echo "Creating config.json with PostHog disabled..."
@@ -177,13 +209,12 @@ jobs:
             },
             "github": {
               "client_id": "$GITHUB_OAUTH_CLIENT_ID",
-              "client_secret": "$GITHUB_OAUTH_CLIENT_SECRET"
+              "client_secret": null
             }
           }
           EOF
             sed -i.bak "s|\$WORKER_URL|$WORKER_URL|g" client/src-tauri/resources/config.json
             sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_ID|$GITHUB_OAUTH_CLIENT_ID|g" client/src-tauri/resources/config.json
-            sed -i.bak "s|\$GITHUB_OAUTH_CLIENT_SECRET|$GITHUB_OAUTH_CLIENT_SECRET|g" client/src-tauri/resources/config.json
             rm -f client/src-tauri/resources/config.json.bak
           fi
           echo "✓ Config created (required by backend.spec)"
@@ -191,9 +222,9 @@ jobs:
       - name: Extract version and check if on main
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-          elif [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$VERSION_INPUT" ]; then
+            VERSION="$VERSION_INPUT"
+          elif [ "$REF_TYPE" = "tag" ]; then
             VERSION=${GITHUB_REF#refs/tags/v}
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
@@ -295,7 +326,7 @@ jobs:
           echo "✅ Version $APP_VERSION injected into tauri.conf.json"
 
       - name: Install frontend dependencies
-        run: cd client && pnpm install
+        run: cd client && pnpm install --frozen-lockfile
 
       - name: Sync Python dependencies
         run: |
@@ -353,16 +384,23 @@ jobs:
           df -h
           echo "✓ Cleanup completed"
 
-      - name: Build with Tauri Action (with retry for x86_64)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: ${{ matrix.arch == 'x86_64' && 3 || 1 }}
-          retry_wait_seconds: 10
-          command: |
-            cd client
-            pnpm tauri build ${{ matrix.args }}
+      - name: Build with Tauri
+        run: |
+          attempt=1
+          until [ "$attempt" -gt "$MAX_ATTEMPTS" ]; do
+            if (cd client && pnpm tauri build ${{ matrix.args }}); then
+              exit 0
+            fi
+            if [ "$attempt" -eq "$MAX_ATTEMPTS" ]; then
+              echo "Tauri build failed after $attempt attempt(s)"
+              exit 1
+            fi
+            echo "Tauri build failed on attempt $attempt; retrying in 10 seconds"
+            attempt=$((attempt + 1))
+            sleep 10
+          done
         env:
+          MAX_ATTEMPTS: ${{ matrix.arch == 'x86_64' && 3 || 1 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
           APPLE_CERTIFICATE: ${{ env.MAC_CERTIFICATE }}
@@ -435,7 +473,7 @@ jobs:
           ls -lh artifacts/
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Byaan_${{ steps.version.outputs.version }}_${{ matrix.arch == 'x86_64' && 'x64' || 'arm64' }}
           path: ${{ steps.rename-dmg.outputs.dmg_path }}
@@ -531,16 +569,38 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: write
+    environment: production
+    env:
+      REF_TYPE: ${{ github.ref_type }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may create production releases from this workflow."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before the GitHub token can create a release."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted release source verified."
 
       - name: Extract version and check if on main
         id: version
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ "$REF_TYPE" = "tag" ]; then
             VERSION=${GITHUB_REF#refs/tags/v}
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
@@ -558,7 +618,7 @@ jobs:
           fi
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
 
       - name: Display structure of downloaded files
         run: |
@@ -578,7 +638,7 @@ jobs:
           ls -lh release-artifacts/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
@@ -596,14 +656,36 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: read
+    environment: production
+    env:
+      REF_TYPE: ${{ github.ref_type }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish production update manifests."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before production credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted release source verified."
+
       - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: "universal"
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -615,7 +697,7 @@ jobs:
       - name: Extract version and check if on main
         id: version
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ "$REF_TYPE" = "tag" ]; then
             VERSION=${GITHUB_REF#refs/tags/v}
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')

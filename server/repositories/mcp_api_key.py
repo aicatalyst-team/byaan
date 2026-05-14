@@ -14,7 +14,7 @@ class MCPAPIKeyRepository:
         self._session = session
 
     async def get_by_hash(self, key_hash: str) -> MCPAPIKey | None:
-        query = select(MCPAPIKey).where(MCPAPIKey.key_hash == key_hash, MCPAPIKey.is_active == True)
+        query = select(MCPAPIKey).where(MCPAPIKey.key_hash == key_hash, MCPAPIKey.is_active.is_(True))
         result = await self._session.execute(query)
         return result.scalar_one_or_none()
 

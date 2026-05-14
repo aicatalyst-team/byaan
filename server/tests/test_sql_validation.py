@@ -13,28 +13,21 @@ class TestValidateSqlQueryAllowsReads:
         assert "WHERE" in result.upper()
 
     def test_select_with_join(self):
-        result = validate_sql_query(
-            "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"
-        )
+        result = validate_sql_query("SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id")
         assert "JOIN" in result.upper()
 
     def test_select_with_subquery(self):
-        result = validate_sql_query(
-            "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)"
-        )
+        result = validate_sql_query("SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)")
         assert "IN" in result.upper()
 
     def test_cte_select(self):
         result = validate_sql_query(
-            "WITH active_users AS (SELECT * FROM users WHERE active = true) "
-            "SELECT * FROM active_users"
+            "WITH active_users AS (SELECT * FROM users WHERE active = true) SELECT * FROM active_users"
         )
         assert "WITH" in result.upper()
 
     def test_union_select(self):
-        result = validate_sql_query(
-            "SELECT id FROM users UNION SELECT id FROM admins"
-        )
+        result = validate_sql_query("SELECT id FROM users UNION SELECT id FROM admins")
         assert "UNION" in result.upper()
 
     def test_aggregate_functions(self):
@@ -62,9 +55,7 @@ class TestValidateSqlQueryAllowsReads:
         assert "ORDER BY" in result.upper()
 
     def test_select_with_case(self):
-        result = validate_sql_query(
-            "SELECT CASE WHEN age > 18 THEN 'adult' ELSE 'minor' END AS category FROM users"
-        )
+        result = validate_sql_query("SELECT CASE WHEN age > 18 THEN 'adult' ELSE 'minor' END AS category FROM users")
         assert "CASE" in result.upper()
 
 
@@ -205,6 +196,4 @@ class TestValidateSqlQueryDialects:
     def test_blocks_insert_across_dialects(self):
         for dialect in [None, "postgres", "mysql", "tsql"]:
             with pytest.raises(ValueError, match="INSERT"):
-                validate_sql_query(
-                    "INSERT INTO users (name) VALUES ('x')", dialect=dialect
-                )
+                validate_sql_query("INSERT INTO users (name) VALUES ('x')", dialect=dialect)

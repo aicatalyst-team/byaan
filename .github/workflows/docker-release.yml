@@ -24,6 +24,13 @@ env:
   REGISTRY: docker.io
   SELF_HOSTED_IMAGE: byaan/self-hosted
 
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build ${{ matrix.platform }}
@@ -31,6 +38,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    environment: production
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      VERSION_INPUT: ${{ inputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,15 +56,42 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run Docker release workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Docker releases with registry credentials must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "release" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before registry credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted Docker release source verified."
 
       - name: Extract version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$VERSION_INPUT"
+          elif [ "$EVENT_NAME" = "release" ]; then
+            VERSION="$RELEASE_TAG_NAME"
             VERSION="${VERSION#v}"
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
@@ -61,19 +100,19 @@ jobs:
           echo "Building version: $VERSION for ${{ matrix.platform }}"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Self-Hosted image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: ./Dockerfile.self-hosted
@@ -93,20 +132,54 @@ jobs:
     permissions:
       contents: read
       packages: write
+    environment: production
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      TAG_LATEST_INPUT: ${{ inputs.tag_latest }}
+      TAG_STABLE_INPUT: ${{ inputs.tag_stable }}
+      VERSION_INPUT: ${{ inputs.version }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish Docker release manifests."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Docker releases with registry credentials must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "release" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before registry credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted Docker release source verified."
 
       - name: Extract version and determine tags
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-            TAG_LATEST="${{ inputs.tag_latest }}"
-            TAG_STABLE="${{ inputs.tag_stable }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$VERSION_INPUT"
+            TAG_LATEST="$TAG_LATEST_INPUT"
+            TAG_STABLE="$TAG_STABLE_INPUT"
+          elif [ "$EVENT_NAME" = "release" ]; then
+            VERSION="$RELEASE_TAG_NAME"
             VERSION="${VERSION#v}"
             TAG_LATEST="true"
             if [ "${{ github.event.release.prerelease }}" = "true" ]; then
@@ -126,10 +199,10 @@ jobs:
           echo "tag_stable=$TAG_STABLE" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -192,21 +265,52 @@ jobs:
     permissions:
       contents: read
       packages: write
+    environment: production
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+      TAG_STABLE_INPUT: ${{ inputs.tag_stable }}
+      VERSION_INPUT: ${{ inputs.version }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
+
+      - name: Validate trusted release source
+        run: |
+          git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish Docker update manifests."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Docker releases with registry credentials must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "release" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag must point to a commit contained in origin/main before production credentials are loaded."
+            echo "Current SHA: $GITHUB_SHA"
+            exit 1
+          fi
+
+          echo "Trusted Docker release source verified."
 
       - name: Extract version and determine tags
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-            TAG_STABLE="${{ inputs.tag_stable }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$VERSION_INPUT"
+            TAG_STABLE="$TAG_STABLE_INPUT"
+          elif [ "$EVENT_NAME" = "release" ]; then
+            VERSION="$RELEASE_TAG_NAME"
             VERSION="${VERSION#v}"
             if [ "${{ github.event.release.prerelease }}" = "true" ]; then
               TAG_STABLE="false"
@@ -231,7 +335,7 @@ jobs:
           fi
 
       - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: "universal"
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -241,13 +345,13 @@ jobs:
           project-slug: "byaan-app-secrets-i-ffg"
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Generate and upload docker-manifest.json
         env:

@@ -58,7 +58,7 @@ be thoughtful in following mongo syntax please
 
 
 SQL_SPECIFIC_RULES = """
-for query execution you should use tool execute_sql_query 
+for query execution you should use tool execute_sql_query
 1. ONLY SELECT queries - no INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE
 2. Use limit parameter in tool (not LIMIT in SQL) for testing
 3. Use proper JOIN syntax, handle NULLs, avoid Cartesian joins
@@ -70,7 +70,7 @@ for query execution you should use tool execute_sql_query
 
 
 DUCKDB_SPECIFIC_RULES = """
-for query execution you should use tool execute_duckdb_query 
+for query execution you should use tool execute_duckdb_query
 1. ONLY SELECT statements – DuckDB queries must be read-only (no INSERT/UPDATE/DELETE/COPY/EXPORT/ATTACH/INSTALL/LOAD).
 2. Reference uploaded files through their table aliases from the schema (for example: SELECT * FROM "orders").
 3. NEVER include LIMIT/OFFSET clauses in the final query; rely on the tool limit for testing.

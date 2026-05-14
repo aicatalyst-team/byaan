@@ -23,7 +23,7 @@ export default function NotebookHistory({ onNotebookClick }: NotebookHistoryProp
 
   // Track notebook selection history for smart navigation
   const notebookHistoryRef = useRef<string[]>([])
-  const currentNotebookId = location.pathname.match(/\/notebook\/([^\/]+)/)?.[1]
+  const currentNotebookId = location.pathname.match(/\/notebook\/([^/]+)/)?.[1]
 
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)

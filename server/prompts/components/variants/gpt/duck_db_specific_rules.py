@@ -1,5 +1,5 @@
 DUCKDB_SPECIFIC_RULES = """
-For query execution you should use tool execute_duckdb_query 
+For query execution you should use tool execute_duckdb_query
 1. ONLY SELECT statements – DuckDB queries must be read-only (no INSERT/UPDATE/DELETE/COPY/EXPORT/ATTACH/INSTALL/LOAD).
 2. Reference uploaded files through their table aliases from the schema (for example: SELECT * FROM "orders").
 3. NEVER include LIMIT/OFFSET clauses in the final query; rely on the tool limit for testing.

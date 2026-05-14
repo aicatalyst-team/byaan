@@ -196,7 +196,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
           return next
         })
         break
-      case 'Enter':
+      case 'Enter': {
         e.preventDefault()
         const selected = resultItems[selectedIndex]
         if (selected) {
@@ -208,6 +208,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
           }
         }
         break
+      }
       case 'Escape':
         e.preventDefault()
         onClose()

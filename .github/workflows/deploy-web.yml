@@ -15,17 +15,50 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-web-${{ github.workflow }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate deployment source
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run web deployment workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production web deploys must be dispatched from main."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] \
+            && [ "$GITHUB_REF" != "refs/heads/main" ] \
+            && [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "Staging web deploys must be dispatched from main or develop."
+            echo "Current ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          echo "Trusted deployment source verified."
 
       - name: Fetch secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: "universal"
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -35,7 +68,7 @@ jobs:
           project-slug: "byaan-app-secrets-i-ffg"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: 'npm'
@@ -52,7 +85,8 @@ jobs:
           npm run build
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        id: deploy
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
