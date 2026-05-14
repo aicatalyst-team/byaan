@@ -101,7 +101,7 @@ The full multi-user deployment. One container ships PostgreSQL, the FastAPI back
 **1. Install** — drops `start.sh` and `.env` into a `byaan` directory:
 
 ```bash
-curl -fsSL https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker/install.sh | bash
+curl -fsSL https://downloads.byaan.ai/docker/install.sh | bash
 cd byaan
 ```
 

@@ -10,7 +10,7 @@
           "files": [
             {
               "filename": "insurance.csv",
-              "source_url": "https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/datasets/insurance.csv"
+              "source_url": "https://downloads.byaan.ai/datasets/insurance.csv"
             }
           ]
         }
@@ -103,7 +103,7 @@
           "files": [
             {
               "filename": "black_friday.csv",
-              "source_url": "https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/datasets/black_friday.csv"
+              "source_url": "https://downloads.byaan.ai/datasets/black_friday.csv"
             }
           ]
         }

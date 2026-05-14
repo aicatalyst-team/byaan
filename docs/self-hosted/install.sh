@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-BASE_URL="https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/docker"
+BASE_URL="https://downloads.byaan.ai/docker"
 
 echo ""
 echo -e "${BOLD}${BLUE}╔════════════════════════════════════════╗${NC}"

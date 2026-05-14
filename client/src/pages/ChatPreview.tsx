@@ -905,12 +905,6 @@ export default function ChatPreview() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isPreviewOpen, clearStoredPreviewIfCurrent])
 
-  useEffect(() => {
-    if (availableVersions.length > 1 && !userClosedPreviewRef.current) {
-      handleOpenPreview()
-    }
-  }, [availableVersions])
-
   const handleClosePreview = useCallback(() => {
     setIsPreviewOpen(false)
     userClosedPreviewRef.current = true
@@ -930,6 +924,13 @@ export default function ChatPreview() {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const [currentSessionVersion, setCurrentSessionVersion] = useState<number | null>(null)
   const [latestVersionNum, setLatestVersionNum] = useState<number>(1)
+
+  useEffect(() => {
+    if (availableVersions.length > 1 && !userClosedPreviewRef.current) {
+      handleOpenPreview()
+    }
+  }, [availableVersions, handleOpenPreview])
+
   const activeDashboardId = useMemo(() => {
     const versionToUse = selectedVersion ?? latestVersionNum
     const match = availableVersions.find(v => v.version_num === versionToUse)
@@ -1814,23 +1815,20 @@ Please modify this element to: `
   }
 
   // Load notebook connection
-  const loadNotebookConnection = useCallback(async () => {
-    if (!notebookId || isNewNotebook) return
+  const loadNotebookConnection = useCallback(async (explicitNotebookId?: string) => {
+    const targetNotebookId = explicitNotebookId || notebookId || createdNotebookIdRef.current
+    if (!targetNotebookId) return
+    if (!explicitNotebookId && isNewNotebook && !createdNotebookIdRef.current) return
     try {
-      const connections = await ApiService.getNotebookConnectionsWithDetails(notebookId)
+      const connections = await ApiService.getNotebookConnectionsWithDetails(targetNotebookId)
       setAllNotebookConnections(connections)
 
       if (connections.length > 0) {
         const notebookConn = connections[0]
         setNotebookConnection(notebookConn)
 
-        // Load fresh schema from database after connections are loaded
-        // This ensures @ mentions have up-to-date table information
-        if (notebookId) {
-          // Don't pass dbType to load ALL databases associated with notebook
-          // Backend will return unified multi-database schema
-          await loadSchema(notebookId)
-        }
+        // Backend will return unified multi-database schema
+        await loadSchema(targetNotebookId)
       } else {
         console.warn('[ChatPreview] No connections found for notebook')
         setAllNotebookConnections([])
@@ -1842,7 +1840,7 @@ Please modify this element to: `
       setAllNotebookConnections([])
       setNotebookConnection(null)
     }
-  }, [notebookId, loadSchema])
+  }, [notebookId, isNewNotebook, loadSchema])
 
   const loadHtmlContentForNotebook = async () => {
     if (!notebookId || notebookId === 'undefined') return;
@@ -2612,8 +2610,9 @@ Please modify this element to: `
           setPendingDatasourceIds(prev =>
             prev.includes(event.datasource_id) ? prev : [...prev, event.datasource_id]
           )
-          if (notebookId && event.datasource_id) {
-            await handleDatasourceSelect(event.datasource_id)
+          const targetNotebookId = notebookId || createdNotebookIdRef.current
+          if (targetNotebookId && event.datasource_id) {
+            await handleDatasourceSelect(event.datasource_id, targetNotebookId)
           }
           setAgentSelectedDatasourceId(event.datasource_id)
         },
@@ -3239,8 +3238,9 @@ Can you help me fix this query?`
     }
   }
 
-  const handleDatasourceSelect = async (datasourceId: string) => {
-    if (!notebookId) return
+  const handleDatasourceSelect = async (datasourceId: string, explicitNotebookId?: string) => {
+    const targetNotebookId = explicitNotebookId || notebookId || createdNotebookIdRef.current
+    if (!targetNotebookId) return
 
     try {
       const datasourcesResponse = await ApiService.listAllDatasources()
@@ -3249,13 +3249,13 @@ Can you help me fix this query?`
       )
 
       if (selectedDatasource?.source_type === 'connection') {
-        await ApiService.associateNotebookConnection(notebookId, {
+        await ApiService.associateNotebookConnection(targetNotebookId, {
           connection_id: selectedDatasource.connection_id!
         })
       } else if (selectedDatasource?.source_type === 'dataset') {
-        await ApiService.associateDatasetWithNotebook(selectedDatasource.id, notebookId)
+        await ApiService.associateDatasetWithNotebook(selectedDatasource.id, targetNotebookId)
       } else {
-        await ApiService.associateNotebookConnection(notebookId, {
+        await ApiService.associateNotebookConnection(targetNotebookId, {
           connection_id: datasourceId
         })
       }
@@ -3267,7 +3267,7 @@ Can you help me fix this query?`
       }
     } finally {
       queryClient.invalidateQueries({ queryKey: ['datasources'] })
-      await loadNotebookConnection()
+      await loadNotebookConnection(targetNotebookId)
       useStore.getState().triggerNotebookDatasourcesChanged()
     }
   }
