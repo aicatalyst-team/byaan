@@ -1,0 +1,53 @@
+# GitHub Actions Hardening
+
+This repository treats pull requests from forks as untrusted code. PR checks must prove that the change builds and tests cleanly without giving that code access to credentials, publish tokens, signing keys, cloud storage, or privileged GitHub tokens.
+
+## PR Workflow Rules
+
+- Use `pull_request` for CI on contributor code.
+- Do not use `pull_request_target` for jobs that check out, build, install, test, or otherwise execute PR code.
+- Set workflow or job permissions explicitly. PR jobs should use `contents: read` unless a narrower documented exception is required.
+- Do not pass repository, organization, cloud, package registry, Apple signing, Docker, Infisical, or R2 secrets to PR jobs.
+- Use `actions/checkout` with `persist-credentials: false` so the token is not written into the local Git config.
+- Keep PR caches separate from release/deploy caches. Do not reuse cache scopes between untrusted PR jobs and privileged publish jobs.
+- Treat PR titles, branch names, bodies, labels, issue comments, and commit messages as attacker-controlled input. Do not interpolate them directly into shell scripts.
+
+## Privileged Workflow Rules
+
+Privileged workflows are allowed to fetch secrets, sign binaries, publish Docker images, write release artifacts, or upload to R2 only when they run from trusted repository events:
+
+- `workflow_dispatch` by a maintainer
+- protected `release` or tag events
+- protected branch pushes after review
+
+Privileged workflows should:
+
+- declare least-privilege `permissions`
+- use GitHub Environments for production/staging approval gates
+- avoid checking out or executing fork PR code
+- use non-canceling `concurrency` for publishing jobs
+- pass secrets only to the step that needs them
+- avoid printing secret-derived values or generated config containing secrets
+
+## Required Repository Settings
+
+Configure these in GitHub after merging the workflow files:
+
+- Require `Pull Request CI`, `Dependency Review`, `CodeQL`, and `Workflow Security` before merging to `main`.
+- Require review from CODEOWNERS for `.github/**`, lockfiles, Docker files, package manifests, and release config.
+- Require approval before running workflows from first-time contributors.
+- Restrict who can run `workflow_dispatch` release, deploy, Docker, R2, and promotion workflows.
+- Enable secret scanning and push protection.
+- Enable Dependabot alerts and dependency graph.
+- Enable CodeQL default setup or keep the committed CodeQL workflow enabled.
+- Configure `production` and `staging` environments with required reviewers before exposing deployment or signing secrets there.
+
+## Incident Class Covered
+
+The TanStack supply-chain incident combined a privileged PR workflow pattern with cache poisoning and token exposure. The guardrail here is privilege separation: untrusted PR code can run checks, but it cannot access secrets, write tokens, privileged caches, or publish paths.
+
+References:
+
+- GitHub secure use reference: https://docs.github.com/en/actions/reference/security/secure-use
+- GitHub script injection guidance: https://docs.github.com/en/actions/concepts/security/script-injections
+- TanStack postmortem: https://tanstack.com/blog/npm-supply-chain-compromise-postmortem

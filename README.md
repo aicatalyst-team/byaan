@@ -21,6 +21,7 @@
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="docs/self-hosted/README.md">Self-Hosted Docs</a> &middot;
   <a href="docs/security/read-only-guardrails.md">Read-Only Guardrails</a> &middot;
+  <a href="docs/security/github-actions-hardening.md">Actions Hardening</a> &middot;
   <a href="CONTRIBUTING.md">Contributing</a> &middot;
   <a href="https://github.com/byaanai/byaan/issues">Issues</a>
 </p>
