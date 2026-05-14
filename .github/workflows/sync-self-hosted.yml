@@ -37,6 +37,12 @@ jobs:
         run: |
           git fetch origin main
 
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish self-hosted files to R2."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ] \
             && [ "$GITHUB_REF" != "refs/heads/main" ] \
             && [ "$GITHUB_REF" != "refs/heads/develop" ]; then

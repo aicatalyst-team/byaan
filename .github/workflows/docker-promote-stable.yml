@@ -28,6 +28,14 @@ jobs:
     env:
       VERSION_INPUT: ${{ inputs.version }}
     steps:
+      - name: Validate authorized actor
+        run: |
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may promote Docker images to stable."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
       - name: Validate version format
         run: |
           VERSION="$VERSION_INPUT"

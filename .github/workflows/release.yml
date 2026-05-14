@@ -56,6 +56,12 @@ jobs:
         run: |
           git fetch origin main
 
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run production release workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "Release builds with production credentials must be dispatched from main."
             echo "Current ref: $GITHUB_REF"
@@ -577,6 +583,12 @@ jobs:
         run: |
           git fetch origin main
 
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may create production releases from this workflow."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
           if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "Release tag must point to a commit contained in origin/main before the GitHub token can create a release."
             echo "Current SHA: $GITHUB_SHA"
@@ -657,6 +669,12 @@ jobs:
       - name: Validate trusted release source
         run: |
           git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish production update manifests."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
 
           if [ "$REF_TYPE" = "tag" ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "Release tag must point to a commit contained in origin/main before production credentials are loaded."

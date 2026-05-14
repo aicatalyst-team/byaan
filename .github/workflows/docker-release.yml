@@ -65,6 +65,12 @@ jobs:
         run: |
           git fetch origin main
 
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run Docker release workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "Docker releases with registry credentials must be dispatched from main."
             echo "Current ref: $GITHUB_REF"
@@ -144,6 +150,12 @@ jobs:
       - name: Validate trusted release source
         run: |
           git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish Docker release manifests."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "Docker releases with registry credentials must be dispatched from main."
@@ -270,6 +282,12 @@ jobs:
       - name: Validate trusted release source
         run: |
           git fetch origin main
+
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may publish Docker update manifests."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "Docker releases with registry credentials must be dispatched from main."

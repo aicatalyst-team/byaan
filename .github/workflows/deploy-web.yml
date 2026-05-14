@@ -35,6 +35,12 @@ jobs:
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run web deployment workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
           if [ "$DEPLOY_ENVIRONMENT" = "production" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "Production web deploys must be dispatched from main."
             echo "Current ref: $GITHUB_REF"

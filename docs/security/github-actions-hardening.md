@@ -26,6 +26,7 @@ Privileged workflows should:
 - use GitHub Environments for production/staging approval gates
 - avoid checking out or executing fork PR code
 - validate the source ref before loading secrets; production release and Docker dispatches must run from `main`, and release tags must point to commits contained in `origin/main`
+- restrict production release, deploy, Docker promotion, R2 test, and self-hosted publish workflows to the owner account before loading secrets
 - use non-canceling `concurrency` for publishing jobs
 - pass secrets only to the step that needs them
 - avoid printing secret-derived values or generated config containing secrets

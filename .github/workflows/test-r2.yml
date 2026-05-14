@@ -24,6 +24,14 @@ jobs:
     env:
       TEST_PATH_INPUT: ${{ inputs.test_path }}
     steps:
+      - name: Validate authorized actor
+        run: |
+          if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
+            echo "Only hadijaveed may run R2 credential test workflows."
+            echo "Current actor: $GITHUB_ACTOR"
+            exit 1
+          fi
+
       - name: Generate test file
         run: |
           mkdir -p test-files
