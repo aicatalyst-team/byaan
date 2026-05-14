@@ -378,9 +378,7 @@ async def test_async_connector_aggregate_without_limit():
     connector.client = DummyClient(collection)
     connector.database_name = "test"
 
-    result = await connector.execute_query(
-        "logs", "aggregate", [[{"$match": {}}]]
-    )
+    result = await connector.execute_query("logs", "aggregate", [[{"$match": {}}]])
     assert result["success"] is True
     assert result["total_count"] == 5
 
@@ -398,7 +396,10 @@ async def test_async_connector_skip_modifier():
     connector.database_name = "test"
 
     result = await connector.execute_query(
-        "users", "find", [{}], limit=10,
+        "users",
+        "find",
+        [{}],
+        limit=10,
         modifiers=[{"method": "skip", "args": 5}],
     )
     assert result["success"] is True
@@ -413,7 +414,10 @@ async def test_async_connector_project_modifier():
     connector.database_name = "test"
 
     result = await connector.execute_query(
-        "users", "find", [{}], limit=10,
+        "users",
+        "find",
+        [{}],
+        limit=10,
         modifiers=[{"method": "project", "args": {"name": 1, "_id": 0}}],
     )
     assert result["success"] is True

@@ -2,7 +2,6 @@
 Tests for DuckDBService — SQL validation, _json_safe, schema inference, query execution.
 """
 
-import math
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -12,10 +11,10 @@ import pytest
 
 from server.services.duckdb_service import DuckDBFileDescriptor, DuckDBService
 
-
 # ---------------------------------------------------------------------------
 # validate_read_only_sql
 # ---------------------------------------------------------------------------
+
 
 class TestValidateReadOnlySql:
     def test_allows_simple_select(self):
@@ -28,15 +27,11 @@ class TestValidateReadOnlySql:
         assert has_limit is True
 
     def test_allows_cte(self):
-        query, has_limit = DuckDBService.validate_read_only_sql(
-            "WITH t AS (SELECT * FROM data) SELECT * FROM t"
-        )
+        query, has_limit = DuckDBService.validate_read_only_sql("WITH t AS (SELECT * FROM data) SELECT * FROM t")
         assert has_limit is False
 
     def test_allows_joins(self):
-        query, _ = DuckDBService.validate_read_only_sql(
-            "SELECT a.id, b.name FROM a JOIN b ON a.id = b.id"
-        )
+        query, _ = DuckDBService.validate_read_only_sql("SELECT a.id, b.name FROM a JOIN b ON a.id = b.id")
         assert query is not None
 
     def test_blocks_delete(self):
@@ -111,14 +106,13 @@ class TestValidateReadOnlySqlUrlBlocking:
     )
     def test_blocks_external_url(self, url_pattern):
         with pytest.raises(ValueError, match="External URL access"):
-            DuckDBService.validate_read_only_sql(
-                f"SELECT * FROM read_csv_auto('{url_pattern}example.com/data.csv')"
-            )
+            DuckDBService.validate_read_only_sql(f"SELECT * FROM read_csv_auto('{url_pattern}example.com/data.csv')")
 
 
 # ---------------------------------------------------------------------------
 # _json_safe
 # ---------------------------------------------------------------------------
+
 
 class TestJsonSafe:
     def test_none_passthrough(self):
@@ -195,6 +189,7 @@ class TestJsonSafe:
 # _apply_limit
 # ---------------------------------------------------------------------------
 
+
 class TestApplyLimit:
     def test_applies_limit_when_no_existing_limit(self):
         query, applied = DuckDBService._apply_limit("SELECT * FROM data", 10, False)
@@ -218,6 +213,7 @@ class TestApplyLimit:
 # _sanitize_query
 # ---------------------------------------------------------------------------
 
+
 class TestSanitizeQuery:
     def test_strips_semicolon(self):
         result = DuckDBService._sanitize_query("SELECT 1;")
@@ -236,19 +232,21 @@ class TestSanitizeQuery:
 # DuckDBFileDescriptor
 # ---------------------------------------------------------------------------
 
+
 class TestDuckDBFileDescriptor:
     def test_csv_descriptor(self):
-        desc = DuckDBFileDescriptor(
-            alias="sales", path=Path("/tmp/sales.csv"), file_type="csv", filename="sales.csv"
-        )
+        desc = DuckDBFileDescriptor(alias="sales", path=Path("/tmp/sales.csv"), file_type="csv", filename="sales.csv")
         assert desc.alias == "sales"
         assert desc.file_type == "csv"
         assert desc.sheet_name is None
 
     def test_excel_descriptor_with_sheet(self):
         desc = DuckDBFileDescriptor(
-            alias="report", path=Path("/tmp/report.xlsx"), file_type="excel",
-            filename="report.xlsx", sheet_name="Sheet1",
+            alias="report",
+            path=Path("/tmp/report.xlsx"),
+            file_type="excel",
+            filename="report.xlsx",
+            sheet_name="Sheet1",
         )
         assert desc.sheet_name == "Sheet1"
 
@@ -257,11 +255,10 @@ class TestDuckDBFileDescriptor:
 # _reader_sql
 # ---------------------------------------------------------------------------
 
+
 class TestReaderSql:
     def test_csv_reader(self):
-        desc = DuckDBFileDescriptor(
-            alias="data", path=Path("/tmp/data.csv"), file_type="csv", filename="data.csv"
-        )
+        desc = DuckDBFileDescriptor(alias="data", path=Path("/tmp/data.csv"), file_type="csv", filename="data.csv")
         sql = DuckDBService._reader_sql(desc)
         assert "read_csv_auto" in sql
         assert "/tmp/data.csv" in sql
@@ -274,16 +271,12 @@ class TestReaderSql:
         assert "read_parquet" in sql
 
     def test_json_reader(self):
-        desc = DuckDBFileDescriptor(
-            alias="data", path=Path("/tmp/data.json"), file_type="json", filename="data.json"
-        )
+        desc = DuckDBFileDescriptor(alias="data", path=Path("/tmp/data.json"), file_type="json", filename="data.json")
         sql = DuckDBService._reader_sql(desc)
         assert "read_json_auto" in sql
 
     def test_unsupported_type_raises(self):
-        desc = DuckDBFileDescriptor(
-            alias="data", path=Path("/tmp/data.avro"), file_type="avro", filename="data.avro"
-        )
+        desc = DuckDBFileDescriptor(alias="data", path=Path("/tmp/data.avro"), file_type="avro", filename="data.avro")
         with pytest.raises(ValueError, match="not implemented"):
             DuckDBService._reader_sql(desc)
 

@@ -160,7 +160,9 @@ class SlackAgentService:
                         )
 
                         if len(value_str) > 2000:
-                            logger.warning(f"Table data too large for button value ({len(value_str)} chars), showing only dashboard button")
+                            logger.warning(
+                                f"Table data too large for button value ({len(value_str)} chars), showing only dashboard button"
+                            )
                             visualization_blocks = [
                                 SlackBlockBuilder.card(
                                     title="📊 Visualization",
@@ -408,8 +410,8 @@ Output only the cleaned message in Markdown, nothing else."""
             cleaned = result if result else raw_response
 
             # Fallback: regex cleanup in case LLM didn't remove tool calls
-            cleaned = re.sub(r'\[\[TOOL_CALL:[^\]]+\]\]', '', cleaned)
-            cleaned = re.sub(r'Tool executed successfully', '', cleaned)
+            cleaned = re.sub(r"\[\[TOOL_CALL:[^\]]+\]\]", "", cleaned)
+            cleaned = re.sub(r"Tool executed successfully", "", cleaned)
             cleaned = cleaned.strip()
 
             cleaned += SlackAgentService.SLACK_MENTION_HINT

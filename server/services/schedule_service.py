@@ -29,7 +29,6 @@ from server.services.screenshot_service import ScreenshotService, ScreenshotServ
 from server.services.slack_service import SlackService
 from server.services.unified_agent import stream_handoff_agent_response
 from server.utils.custom_logger import get_logger
-from server.utils.slack_block_elements import SlackBlockBuilder
 from server.utils.slack_formatter import markdown_to_slack_blocks
 from server.utils.slack_table_parser import SlackTableParser
 
@@ -236,7 +235,6 @@ This is an automated scheduled report execution.
         )
 
         response_parts = []
-        dashboard_generated = False
         try:
             async for event in stream_handoff_agent_response(agent_request, session, tenant_id=schedule.tenant_id):
                 if event.startswith("data: "):
@@ -245,7 +243,6 @@ This is an automated scheduled report execution.
                         if data.get("type") == "content":
                             response_parts.append(data.get("text", ""))
                         elif data.get("type") == "html_edit_complete":
-                            dashboard_generated = True
                             logger.info(f"Dashboard generation detected for schedule {schedule.id}")
                         elif data.get("type") == "error":
                             return {"status": "failed", "error": data.get("text", "Unknown error")}

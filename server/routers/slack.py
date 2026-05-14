@@ -338,11 +338,10 @@ async def _process_auto_generate_chart(
 
             if chart_urls:
                 from server.utils.slack_block_elements import SlackBlockBuilder
+
                 chart_blocks = []
                 for chart_url in chart_urls:
-                    chart_blocks.append(
-                        SlackBlockBuilder.image(image_url=chart_url, alt_text="Auto-generated chart")
-                    )
+                    chart_blocks.append(SlackBlockBuilder.image(image_url=chart_url, alt_text="Auto-generated chart"))
 
                 await slack_client.post_message(
                     channel=channel_id,
@@ -401,18 +400,14 @@ async def _process_customize_chart_options(
             table_selector_options = []
             if len(tables) > 1:
                 for idx in range(len(tables)):
-                    table_selector_options.append({
-                        "text": {"type": "plain_text", "text": f"Table {idx + 1}"},
-                        "value": str(idx)
-                    })
+                    table_selector_options.append(
+                        {"text": {"type": "plain_text", "text": f"Table {idx + 1}"}, "value": str(idx)}
+                    )
 
             x_axis_options = []
             y_axis_options = []
             for idx, col in enumerate(columns):
-                option = {
-                    "text": {"type": "plain_text", "text": col[:75]},
-                    "value": str(idx)
-                }
+                option = {"text": {"type": "plain_text", "text": col[:75]}, "value": str(idx)}
                 x_axis_options.append(option)
                 y_axis_options.append(option)
 
@@ -462,64 +457,70 @@ async def _process_customize_chart_options(
             ]
 
             if len(tables) > 1:
-                blocks.append({
-                    "type": "section",
-                    "block_id": "table_selector_block",
-                    "text": {"type": "mrkdwn", "text": "*Select Table:*"},
-                    "accessory": {
-                        "type": "static_select",
-                        "action_id": "table_select",
-                        "placeholder": {"type": "plain_text", "text": "Choose a table"},
-                        "options": table_selector_options,
-                        "initial_option": table_selector_options[0],
+                blocks.append(
+                    {
+                        "type": "section",
+                        "block_id": "table_selector_block",
+                        "text": {"type": "mrkdwn", "text": "*Select Table:*"},
+                        "accessory": {
+                            "type": "static_select",
+                            "action_id": "table_select",
+                            "placeholder": {"type": "plain_text", "text": "Choose a table"},
+                            "options": table_selector_options,
+                            "initial_option": table_selector_options[0],
+                        },
                     }
-                })
+                )
 
-            blocks.extend([
-                {
-                    "type": "section",
-                    "block_id": "x_axis_block",
-                    "text": {"type": "mrkdwn", "text": "*X-Axis (Labels):*"},
-                    "accessory": {
-                        "type": "static_select",
-                        "action_id": "x_axis_select",
-                        "placeholder": {"type": "plain_text", "text": "Select column"},
-                        "options": x_axis_options,
-                    }
-                },
-                {
-                    "type": "section",
-                    "block_id": "y_axis_block",
-                    "text": {"type": "mrkdwn", "text": "*Y-Axis (Data):*"},
-                    "accessory": {
-                        "type": "multi_static_select",
-                        "action_id": "y_axis_select",
-                        "placeholder": {"type": "plain_text", "text": "Select column(s)"},
-                        "options": y_axis_options,
-                    }
-                },
-                {
-                    "type": "section",
-                    "block_id": "chart_type_block",
-                    "text": {"type": "mrkdwn", "text": "*Chart Type:*"},
-                    "accessory": {
-                        "type": "static_select",
-                        "action_id": "chart_type_select",
-                        "placeholder": {"type": "plain_text", "text": "Select chart type"},
-                        "options": chart_type_options,
-                        "initial_option": chart_type_options[0],
-                    }
-                },
-                SlackBlockBuilder.divider(),
-                SlackBlockBuilder.actions([
-                    SlackBlockBuilder.button(
-                        text="Generate Chart",
-                        action_id="generate_custom_chart",
-                        value=json.dumps(table_data),
-                        style="primary",
+            blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "block_id": "x_axis_block",
+                        "text": {"type": "mrkdwn", "text": "*X-Axis (Labels):*"},
+                        "accessory": {
+                            "type": "static_select",
+                            "action_id": "x_axis_select",
+                            "placeholder": {"type": "plain_text", "text": "Select column"},
+                            "options": x_axis_options,
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "block_id": "y_axis_block",
+                        "text": {"type": "mrkdwn", "text": "*Y-Axis (Data):*"},
+                        "accessory": {
+                            "type": "multi_static_select",
+                            "action_id": "y_axis_select",
+                            "placeholder": {"type": "plain_text", "text": "Select column(s)"},
+                            "options": y_axis_options,
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "block_id": "chart_type_block",
+                        "text": {"type": "mrkdwn", "text": "*Chart Type:*"},
+                        "accessory": {
+                            "type": "static_select",
+                            "action_id": "chart_type_select",
+                            "placeholder": {"type": "plain_text", "text": "Select chart type"},
+                            "options": chart_type_options,
+                            "initial_option": chart_type_options[0],
+                        },
+                    },
+                    SlackBlockBuilder.divider(),
+                    SlackBlockBuilder.actions(
+                        [
+                            SlackBlockBuilder.button(
+                                text="Generate Chart",
+                                action_id="generate_custom_chart",
+                                value=json.dumps(table_data),
+                                style="primary",
+                            ),
+                        ]
                     ),
-                ]),
-            ])
+                ]
+            )
 
             logger.info(f"Sending customization UI with {len(x_axis_options)} column options to Slack via response_url")
 
@@ -615,8 +616,7 @@ async def _process_generate_custom_chart(
 
             logger.info(f"Processing {len(data_rows)} data rows with {len(columns)} columns: {columns}")
 
-            labels = [row[x_axis_idx] if x_axis_idx < len(row) else f"Row {i+1}"
-                     for i, row in enumerate(data_rows)]
+            labels = [row[x_axis_idx] if x_axis_idx < len(row) else f"Row {i + 1}" for i, row in enumerate(data_rows)]
 
             logger.info(f"Generated {len(labels)} labels from column index {x_axis_idx}")
 
@@ -633,7 +633,31 @@ async def _process_generate_custom_chart(
                             cleaned = str(row[col_idx])
                             cleaned = cleaned.replace("$", "").replace("€", "").replace("£", "").replace("¥", "")
                             cleaned = cleaned.replace("%", "").replace(",", "")
-                            for unit in [" minutes", " mins", " min", " hours", " hrs", " hr", " seconds", " secs", " sec", " days", " day", " weeks", " week", " months", " month", " years", " year", " kg", " km", " mi", " ft", " m", " cm"]:
+                            for unit in [
+                                " minutes",
+                                " mins",
+                                " min",
+                                " hours",
+                                " hrs",
+                                " hr",
+                                " seconds",
+                                " secs",
+                                " sec",
+                                " days",
+                                " day",
+                                " weeks",
+                                " week",
+                                " months",
+                                " month",
+                                " years",
+                                " year",
+                                " kg",
+                                " km",
+                                " mi",
+                                " ft",
+                                " m",
+                                " cm",
+                            ]:
                                 cleaned = cleaned.replace(unit, "")
                             cleaned = cleaned.strip()
                             val = float(cleaned)
@@ -643,10 +667,12 @@ async def _process_generate_custom_chart(
                     else:
                         values.append(None)
 
-                datasets.append({
-                    "label": col_name,
-                    "data": values,
-                })
+                datasets.append(
+                    {
+                        "label": col_name,
+                        "data": values,
+                    }
+                )
 
             logger.info(f"Built {len(datasets)} datasets with {len(labels)} labels each")
             for i, ds in enumerate(datasets):
@@ -680,9 +706,7 @@ async def _process_generate_custom_chart(
                 )
                 return
 
-            chart_blocks = [
-                SlackBlockBuilder.image(image_url=chart_url, alt_text="Custom chart")
-            ]
+            chart_blocks = [SlackBlockBuilder.image(image_url=chart_url, alt_text="Custom chart")]
 
             await slack_client.post_message(
                 channel=channel_id,

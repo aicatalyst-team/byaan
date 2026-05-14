@@ -1,5 +1,5 @@
 SQL_SPECIFIC_RULES = """
-For query execution you should use tool execute_sql_query 
+For query execution you should use tool execute_sql_query
 1. ONLY SELECT queries - no INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE
 2. Use limit parameter in tool (not LIMIT in SQL) for testing
 3. Use proper JOIN syntax, handle NULLs, avoid Cartesian joins

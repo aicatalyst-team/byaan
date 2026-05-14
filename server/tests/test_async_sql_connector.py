@@ -4,8 +4,6 @@ Tests for AsyncSQLConnector — limit logic, query execution, connection URL bui
 Uses SQLite in-memory for integration tests where a real engine is needed.
 """
 
-import asyncio
-
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
@@ -13,10 +11,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from server.services.database_operations import AsyncSQLConnector
 
-
 # ---------------------------------------------------------------------------
 # _apply_limit_to_query (unit tests, no DB needed)
 # ---------------------------------------------------------------------------
+
 
 class TestApplyLimitToQuery:
     def _make_connector(self, db_type="pg"):
@@ -75,6 +73,7 @@ class TestApplyLimitToQuery:
 # ---------------------------------------------------------------------------
 # _build_connection_url (unit tests)
 # ---------------------------------------------------------------------------
+
 
 class TestBuildConnectionUrl:
     def test_sqlite_memory(self):
@@ -140,6 +139,7 @@ class TestBuildConnectionUrl:
 # ---------------------------------------------------------------------------
 # execute_query (integration tests with SQLite in-memory)
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteQuery:
     @pytest_asyncio.fixture

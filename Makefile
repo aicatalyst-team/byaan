@@ -1,4 +1,7 @@
-.PHONY: setup dev dev-build dev-logs rebuild stop clean hosted hosted-build hosted-logs hosted-stop hosted-rebuild hosted-clean format lint format-check test run-server sync-skills install-hooks
+.PHONY: setup dev dev-build dev-logs rebuild stop clean hosted hosted-build hosted-logs hosted-stop hosted-rebuild hosted-clean format lint format-check test run-server sync-skills install-hooks \
+	format-backend lint-backend format-check-backend test-backend \
+	format-frontend lint-frontend format-check-frontend test-frontend \
+	format-all lint-all format-check-all test-all
 
 # =============================================================================
 # Local/Community development (default, SQLite, ports 17433/17434)
@@ -55,22 +58,55 @@ hosted-clean:
 	$(COMPOSE_HOSTED) down -v
 
 # =============================================================================
-# Python formatting and linting commands
+# Backend (Python/FastAPI) — format, lint, test
 # =============================================================================
-format:
+format-backend:
 	@echo "Formatting Python code with Ruff..."
 	cd server && uv run ruff format .
 	cd server && uv run ruff check --fix .
 
-lint:
+lint-backend:
 	cd server && uv run ruff check .
 
-format-check:
+format-check-backend:
 	cd server && uv run ruff format --check .
 	cd server && uv run ruff check .
 
-test:
+test-backend:
 	cd server && PYTHONPATH=..:tests uv run pytest
+
+# =============================================================================
+# Frontend (React/TypeScript) — format, lint, test
+# =============================================================================
+format-frontend:
+	@echo "Auto-fixing frontend with ESLint..."
+	cd client && pnpm exec eslint . --fix
+
+lint-frontend:
+	cd client && pnpm lint
+
+format-check-frontend:
+	cd client && pnpm exec tsc -b
+	cd client && pnpm lint
+
+test-frontend:
+	@echo "No frontend test suite configured."
+
+# =============================================================================
+# Aggregates (run both backend + frontend)
+# =============================================================================
+format: format-backend format-frontend
+
+lint: lint-backend lint-frontend
+
+format-check: format-check-backend format-check-frontend
+
+test: test-backend test-frontend
+
+format-all: format
+lint-all: lint
+format-check-all: format-check
+test-all: test
 
 run-server:
 	uv run --directory server uvicorn server.main:app --host 0.0.0.0 --port 8000

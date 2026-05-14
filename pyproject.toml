@@ -98,6 +98,8 @@ ignore = [
   "E722",  # bare except
   "UP038", # use X | Y in isinstance
   "B007",  # unused loop variable
+  "UP042", # str-Enum migration to StrEnum (behavioral risk)
+  "B012",  # return/break/continue in finally (intentional cleanup paths)
 ]
 
 [tool.ruff.format]
@@ -110,6 +112,11 @@ line-ending = "auto"
 
 [dependency-groups]
 dev = ["pytest-asyncio>=1.1.0", "pyinstaller>=6.0.0"]
+
+[tool.ruff.lint.per-file-ignores]
+"server/main.py" = ["E402"]
+"server/services/dataset_storage.py" = ["E402"]
+"server/services/slack_agent_service.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = [
