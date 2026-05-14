@@ -75,7 +75,7 @@ jobs:
         run: pnpm lint
 
       - name: Build client
-        run: pnpm build:check
+        run: pnpm build
 
   web:
     name: Web lint and build

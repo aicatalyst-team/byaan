@@ -28,9 +28,7 @@ export interface AnthropicConfig {
   api_key: string
 }
 
-export interface ClaudeCodeConfig {
-  // uses Claude Code OAuth
-}
+export type ClaudeCodeConfig = Record<string, never>
 
 export interface OpenRouterConfig {
   api_key: string

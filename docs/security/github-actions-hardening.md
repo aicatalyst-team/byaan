@@ -40,7 +40,7 @@ Configure these in GitHub after merging the workflow files:
 - Enable secret scanning and push protection.
 - Enable Dependabot alerts and dependency graph.
 - Enable CodeQL default setup or keep the committed CodeQL workflow enabled.
-- Configure `production` and `staging` environments with required reviewers before exposing deployment or signing secrets there.
+- Configure `production` and `staging` environments with required reviewers before exposing deployment or signing secrets there. Empty environments are enough to start jobs, but they do not provide a review gate or scoped secrets.
 
 ## Incident Class Covered
 

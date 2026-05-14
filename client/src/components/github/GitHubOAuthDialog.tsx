@@ -92,7 +92,9 @@ export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailabl
               onSuccess?.()
             }
           }
-        } catch {}
+        } catch {
+          return
+        }
       }
       checkInitialDeepLink()
       return
@@ -106,7 +108,9 @@ export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailabl
           setStep('success')
           onSuccess?.()
         }
-      } catch {}
+      } catch {
+        return
+      }
     }, 2000)
 
     return () => clearInterval(interval)

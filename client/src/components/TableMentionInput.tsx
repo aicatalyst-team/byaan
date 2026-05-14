@@ -134,7 +134,11 @@ export const TableMentionInput = forwardRef<HTMLTextAreaElement, TableMentionInp
         textarea.style.height = `${target}px`
         textarea.style.overflowY = textarea.scrollHeight > maxH ? 'auto' : 'hidden'
         if (onHeightChange) {
-          try { onHeightChange(target) } catch {}
+          try {
+            onHeightChange(target)
+          } catch {
+            return
+          }
         }
       }
     }, [singleLine, onHeightChange])
