@@ -90,9 +90,14 @@ jobs:
             VERSION="$VERSION_INPUT"
           elif [ "$EVENT_NAME" = "release" ]; then
             VERSION="$RELEASE_TAG_NAME"
-            VERSION="${VERSION#v}"
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
+          fi
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid Docker release version: $VERSION"
+            echo "Use a Docker-compatible semver version such as 0.1.3, v0.1.3, or 0.1.3-rc.1."
+            exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION for ${{ matrix.platform }}"
@@ -176,7 +181,6 @@ jobs:
             TAG_STABLE="$TAG_STABLE_INPUT"
           elif [ "$EVENT_NAME" = "release" ]; then
             VERSION="$RELEASE_TAG_NAME"
-            VERSION="${VERSION#v}"
             TAG_LATEST="true"
             if [ "${{ github.event.release.prerelease }}" = "true" ]; then
               TAG_LATEST="false"
@@ -190,6 +194,12 @@ jobs:
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
             TAG_LATEST="false"
             TAG_STABLE="false"
+          fi
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid Docker release version: $VERSION"
+            echo "Use a Docker-compatible semver version such as 0.1.3, v0.1.3, or 0.1.3-rc.1."
+            exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag_latest=$TAG_LATEST" >> $GITHUB_OUTPUT
@@ -306,7 +316,6 @@ jobs:
             TAG_STABLE="$TAG_STABLE_INPUT"
           elif [ "$EVENT_NAME" = "release" ]; then
             VERSION="$RELEASE_TAG_NAME"
-            VERSION="${VERSION#v}"
             if [ "${{ github.event.release.prerelease }}" = "true" ]; then
               TAG_STABLE="false"
               echo "Pre-release detected - skipping stable manifest update"
@@ -317,6 +326,12 @@ jobs:
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
             TAG_STABLE="false"
+          fi
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid Docker release version: $VERSION"
+            echo "Use a Docker-compatible semver version such as 0.1.3, v0.1.3, or 0.1.3-rc.1."
+            exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag_stable=$TAG_STABLE" >> $GITHUB_OUTPUT
