@@ -63,8 +63,6 @@ jobs:
 
       - name: Validate trusted release source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may run Docker release workflows."
             echo "Current actor: $GITHUB_ACTOR"
@@ -149,8 +147,6 @@ jobs:
 
       - name: Validate trusted release source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may publish Docker release manifests."
             echo "Current actor: $GITHUB_ACTOR"
@@ -183,11 +179,12 @@ jobs:
             VERSION="${VERSION#v}"
             TAG_LATEST="true"
             if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+              TAG_LATEST="false"
               TAG_STABLE="false"
-              echo "Pre-release detected - skipping stable tag"
+              echo "Pre-release detected - skipping latest and stable tags"
             else
               TAG_STABLE="true"
-              echo "Full release detected - will tag as stable"
+              echo "Full release detected - will tag as latest and stable"
             fi
           else
             VERSION=$(grep -o '"version": *"[^"]*"' client/src-tauri/tauri.conf.json | grep -o '"[0-9][^"]*"' | tr -d '"')
@@ -281,8 +278,6 @@ jobs:
 
       - name: Validate trusted release source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may publish Docker update manifests."
             echo "Current actor: $GITHUB_ACTOR"

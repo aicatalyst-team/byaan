@@ -2,7 +2,7 @@ name: Release Build (Tauri)
 
 on:
   release:
-    types: [released]
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -26,6 +26,7 @@ jobs:
     env:
       EVENT_NAME: ${{ github.event_name }}
       REF_TYPE: ${{ github.ref_type }}
+      RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
       VERSION_INPUT: ${{ inputs.version }}
     strategy:
       fail-fast: false
@@ -54,8 +55,6 @@ jobs:
 
       - name: Validate trusted release source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may run production release workflows."
             echo "Current actor: $GITHUB_ACTOR"
@@ -234,7 +233,6 @@ jobs:
           echo "Building version: $VERSION"
 
           # Check if the current commit is on main branch
-          git fetch origin main --depth=1
           if git merge-base --is-ancestor ${{ github.sha }} origin/main 2>/dev/null; then
             echo "is_main=true" >> $GITHUB_OUTPUT
             echo "✓ Tag is on main branch - will publish to stable"
@@ -523,7 +521,7 @@ jobs:
           echo "  - $SIG_PATH"
 
       - name: Upload to R2 Stable Channel
-        if: github.ref_type == 'tag' && steps.version.outputs.is_main == 'true'
+        if: github.ref_type == 'tag' && steps.version.outputs.is_main == 'true' && github.event.release.prerelease != true
         env:
           AWS_ACCESS_KEY_ID: ${{ env.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.R2_SECRET_ACCESS_KEY }}
@@ -581,8 +579,6 @@ jobs:
 
       - name: Validate trusted release source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may create production releases from this workflow."
             echo "Current actor: $GITHUB_ACTOR"
@@ -644,7 +640,7 @@ jobs:
           name: v${{ steps.version.outputs.version }}
           files: release-artifacts/*.dmg
           draft: false
-          prerelease: false
+          prerelease: ${{ github.event.release.prerelease }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -668,8 +664,6 @@ jobs:
 
       - name: Validate trusted release source
         run: |
-          git fetch origin main
-
           if [ "$GITHUB_ACTOR" != "hadijaveed" ]; then
             echo "Only hadijaveed may publish production update manifests."
             echo "Current actor: $GITHUB_ACTOR"
@@ -715,7 +709,7 @@ jobs:
           fi
 
       - name: Generate and upload stable/latest.json (main only)
-        if: steps.version.outputs.is_main == 'true'
+        if: steps.version.outputs.is_main == 'true' && github.event.release.prerelease != true
         env:
           AWS_ACCESS_KEY_ID: ${{ env.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.R2_SECRET_ACCESS_KEY }}
