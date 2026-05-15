@@ -6,6 +6,7 @@ interface ResizableSplitPanelProps {
   defaultLeftWidth?: number // percentage (0-100)
   minLeftWidth?: number // percentage
   maxLeftWidth?: number // percentage
+  isRightPanelOpen?: boolean
 }
 
 interface ResizableVerticalPanelProps {
@@ -22,6 +23,7 @@ export function ResizableSplitPanel({
   defaultLeftWidth = 40,
   minLeftWidth = 25,
   maxLeftWidth = 60,
+  isRightPanelOpen = true,
 }: ResizableSplitPanelProps) {
   const [leftWidth, setLeftWidth] = useState(defaultLeftWidth)
   const [isDragging, setIsDragging] = useState(false)
@@ -102,10 +104,11 @@ export function ResizableSplitPanel({
       {/* Left Panel */}
       <div
         style={{
-          width: `${leftWidth}%`,
+          width: isRightPanelOpen ? `${leftWidth}%` : '100%',
+          transition: !isDragging ? 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
           willChange: isDragging ? 'width' : 'auto',
           pointerEvents: isDragging ? 'none' : 'auto',
-          contain: isDragging ? 'layout style paint' : 'none'
+          contain: isDragging ? 'layout style paint' : 'none',
         }}
         className="flex-shrink-0 h-full overflow-hidden"
       >
@@ -115,6 +118,7 @@ export function ResizableSplitPanel({
       {/* Resizable Divider */}
       <div
         onMouseDown={handleMouseDown}
+        style={{ display: isRightPanelOpen ? undefined : 'none' }}
         className={`w-1 bg-[#2a2a2a] hover:bg-[#404040] cursor-col-resize flex-shrink-0 relative group ${
           isDragging ? 'bg-[#4a9eff]' : 'transition-colors'
         }`}
@@ -131,11 +135,14 @@ export function ResizableSplitPanel({
 
       {/* Right Panel */}
       <div
-        className="flex-1 h-full overflow-hidden"
+        className="h-full overflow-hidden"
         style={{
+          flex: isRightPanelOpen ? '1' : '0 0 0px',
+          width: isRightPanelOpen ? undefined : 0,
+          pointerEvents: isRightPanelOpen ? 'auto' : 'none',
+          transition: !isDragging ? 'flex 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
           willChange: isDragging ? 'width' : 'auto',
-          pointerEvents: isDragging ? 'none' : 'auto',
-          contain: isDragging ? 'layout style paint' : 'none'
+          contain: isDragging ? 'layout style paint' : 'none',
         }}
       >
         {rightPanel}

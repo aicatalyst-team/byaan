@@ -3930,10 +3930,10 @@ Can you help me fix this query?`
 
       {/* Centered Chat + Resizable Preview Layout */}
       <div className="flex-1 overflow-hidden flex">
-        {isPreviewOpen ? (
-          <ResizableSplitPanel
-            leftPanel={
-              <div className="chat-area flex flex-col h-full chat-area-with-preview">
+        <ResizableSplitPanel
+          isRightPanelOpen={isPreviewOpen}
+          leftPanel={
+            <div className={`chat-area flex flex-col h-full ${isPreviewOpen ? 'chat-area-with-preview' : 'chat-area-centered'}`}>
                 <div className="flex flex-col h-full w-full">
                   {existingSchedule && !isScheduleMode && (
                     <div className="max-w-3xl min-[1440px]:max-w-4xl min-[2560px]:max-w-[1400px] mx-auto w-full">
@@ -4078,74 +4078,10 @@ Can you help me fix this query?`
                 </div>
               </div>
             }
-            defaultLeftWidth={45}
-            minLeftWidth={25}
-            maxLeftWidth={75}
-          />
-        ) : (
-          <div className="chat-area flex flex-col h-full chat-area-centered">
-            <div className="flex flex-col h-full w-full">
-              {existingSchedule && !isScheduleMode && (
-                <div className="max-w-3xl min-[1440px]:max-w-4xl min-[2560px]:max-w-[1400px] mx-auto w-full">
-                  <ScheduleBanner
-                    schedule={existingSchedule}
-                    onEdit={handleEnterScheduleMode}
-                    onToggle={handleToggleSchedule}
-                    onDelete={handleDeleteSchedule}
-                    slackChannelName={existingSchedule.slack_channel_id ? slackChannelNames[existingSchedule.slack_channel_id] : undefined}
-                  />
-                </div>
-              )}
-
-              <MessageList
-                notebookId={notebookId}
-                handleCodeInject={handleCodeInject}
-                currentActivity={currentActivity}
-              />
-
-              <div className="max-w-3xl min-[1440px]:max-w-4xl min-[2560px]:max-w-[1400px] mx-auto w-full">
-                <ChatInput
-                  notebookId={notebookId}
-                  datasources={schemaDatasets}
-                  tableNames={tableNames}
-                  getTableColumns={getTableColumns}
-                  onSubmit={async (msg, attachments) => {
-                    if (isScheduleMode) {
-                      setScheduleInstruction(msg)
-                    }
-                    await handleSubmitMessage(msg, attachments)
-                  }}
-                  selectedProvider={selectedProvider}
-                  selectedModel={selectedModel}
-                  handleCancelGeneration={handleCancelGeneration}
-                  selectedDatasourceIds={pendingDatasourceIds}
-                  onDatasourceChange={handleDatasourceChange}
-                  onUploadFiles={handleUploadFilesForChat}
-                  onAddNewConnection={handleAddNewConnection}
-                  agentSelectedDatasourceId={agentSelectedDatasourceId}
-                  onSchedule={isScheduleMode ? undefined : handleEnterScheduleMode}
-                  hasSchedule={!!existingSchedule}
-                  isScheduleMode={isScheduleMode}
-                  onCancelSchedule={handleCancelScheduleMode}
-                  onInputChange={setScheduleInstruction}
-                  grabbedElementText={grabbedElementText}
-                />
-
-                {isScheduleMode && !isNotebookStreaming && messages.length > 0 && (
-                  <ScheduleConfigPanel
-                    config={scheduleConfig}
-                    onConfigChange={setScheduleConfig}
-                    onCancel={handleCancelScheduleMode}
-                    onSave={handleSaveSchedule}
-                    isSaving={createScheduleMutation.isPending || updateScheduleMutation.isPending}
-                    existingScheduleId={existingSchedule?.id}
-                    instruction={scheduleInstruction}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+          defaultLeftWidth={25}
+          minLeftWidth={25}
+          maxLeftWidth={75}
+        />
       </div>
 
       {/* Query Panel Overlay */}

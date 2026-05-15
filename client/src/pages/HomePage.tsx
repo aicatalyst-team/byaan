@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, Database, FolderPlus, Folder, Github, Plug } from 'lucide-react'
 import WelcomeSection from '../components/home/WelcomeSection'
@@ -40,6 +40,24 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabType>(() => getInitialTab(isViewer, isSelfHosted))
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false)
   const [mcpModalOpen, setMcpModalOpen] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleScroll = useCallback(() => {
+    if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+    scrollSaveTimerRef.current = setTimeout(() => {
+      if (scrollContainerRef.current) {
+        sessionStorage.setItem(`home_scroll_${activeTab}`, String(scrollContainerRef.current.scrollTop))
+      }
+    }, 100)
+  }, [activeTab])
+
+  useLayoutEffect(() => {
+    const saved = sessionStorage.getItem(`home_scroll_${activeTab}`)
+    if (saved && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = Number(saved)
+    }
+  }, [activeTab])
   const [mcpDismissed, setMcpDismissed] = useState(() => localStorage.getItem('byaan_mcp_setup_dismissed') === 'true')
 
   useEffect(() => {
@@ -200,7 +218,7 @@ export default function HomePage() {
       </div>
 
       {/* Scrollable Content Section */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
         <div className="w-full px-8 pb-6">
           <div className="max-w-[850px] mx-auto">
             {activeTab === 'dashboards' ? (
