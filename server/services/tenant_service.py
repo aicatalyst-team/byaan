@@ -194,9 +194,7 @@ class TenantService:
                     exc_info=True,
                 )
         else:
-            logger.info(
-                f"No email service configured. Invitation created for {email}; admin must share link manually."
-            )
+            logger.info(f"No email service configured. Invitation created for {email}; admin must share link manually.")
 
         return invitation, invitation_link, email_sent
 

@@ -219,9 +219,7 @@ async def device_flow_poll(
                 message="GitHub connected successfully",
             )
 
-        return success_response(
-            data=GitHubDeviceFlowPollResponse(status=result["status"]).model_dump()
-        )
+        return success_response(data=GitHubDeviceFlowPollResponse(status=result["status"]).model_dump())
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
