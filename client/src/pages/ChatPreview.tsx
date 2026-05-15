@@ -3932,9 +3932,6 @@ Can you help me fix this query?`
       <div className="flex-1 overflow-hidden flex">
         <ResizableSplitPanel
           isRightPanelOpen={isPreviewOpen}
-          defaultLeftWidth={45}
-          minLeftWidth={25}
-          maxLeftWidth={75}
           leftPanel={
             <div className={`chat-area flex flex-col h-full ${isPreviewOpen ? 'chat-area-with-preview' : 'chat-area-centered'}`}>
                 <div className="flex flex-col h-full w-full">
@@ -4081,6 +4078,9 @@ Can you help me fix this query?`
                 </div>
               </div>
             }
+          defaultLeftWidth={25}
+          minLeftWidth={25}
+          maxLeftWidth={75}
         />
       </div>
 
