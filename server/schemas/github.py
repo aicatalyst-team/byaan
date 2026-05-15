@@ -83,6 +83,24 @@ class GitHubOAuthSettingsResponse(BaseModel):
     client_secret_configured: bool
 
 
+class GitHubDeviceFlowStartResponse(BaseModel):
+    device_code: str
+    user_code: str
+    verification_uri: str
+    expires_in: int
+    interval: int
+
+
+class GitHubDeviceFlowPollRequest(BaseModel):
+    device_code: str
+
+
+class GitHubDeviceFlowPollResponse(BaseModel):
+    status: str  # "success" | "pending" | "slow_down" | "denied" | "expired"
+    connected: bool = False
+    username: str | None = None
+
+
 class GitHubPATRequest(BaseModel):
     token: str = Field(..., min_length=1)
 

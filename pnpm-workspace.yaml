@@ -1,0 +1,5 @@
+packages:
+  - client
+
+# Only allow packages that have been published for at least 7 days (supply-chain safety)
+minimumReleaseAge: 10080

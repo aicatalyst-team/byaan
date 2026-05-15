@@ -31,7 +31,7 @@ const included = [
   {
     Icon: () => <ChatIcon size={18} />,
     title: "Slack integration",
-    body: "Add to your workspace. The team @byaan in any channel — answers in the thread.",
+    body: "Add to your workspace. Tag @byaan in any channel — answers in the thread.",
   },
   {
     Icon: () => <CpuIcon size={18} />,
@@ -74,7 +74,7 @@ const SelfHost = () => {
       <div className="container">
         <div className="section-head reveal">
           <span className="section-eyebrow accent">For teams</span>
-          <h2 className="section-title">Self-host Byaan for your team</h2>
+          <h2 className="section-title">Byaan Team Version</h2>
           <p className="section-sub">
             One-line install. Multi-user auth, RBAC, Slack, and automatic HTTPS — out of the box. Runs in your VPC. AGPL licensed.
           </p>
@@ -172,6 +172,62 @@ const SelfHost = () => {
 
         <div
           className="reveal"
+          style={{ marginTop: 56, maxWidth: 720, marginLeft: "auto", marginRight: "auto" }}
+        >
+          <div className="deploy-card">
+            <div className="deploy-title" style={{ marginBottom: 4 }}>Update &amp; logs</div>
+            <div className="deploy-prereq" style={{ marginBottom: 20 }}>
+              Keep your instance current and monitor services with these commands.
+            </div>
+
+            <div className="deploy-step">
+              <div className="deploy-step-num">↑</div>
+              <div className="deploy-step-content">
+                <div className="deploy-step-title">Update</div>
+                <div className="deploy-code" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+                  ./start.sh update
+                </div>
+                <div className="deploy-step-hint">
+                  Run this command to deploy the latest version.
+                </div>
+              </div>
+            </div>
+
+            <div className="deploy-step">
+              <div className="deploy-step-num">≡</div>
+              <div className="deploy-step-content">
+                <div className="deploy-step-title">Logs</div>
+                <div className="deploy-code" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+                  ./start.sh logs
+                </div>
+                <div className="deploy-step-hint">
+                  Tail all services. Scope to one service by passing its name:
+                  <ul className="deploy-step-list">
+                    <li><code className="inline-code">./start.sh logs backend</code> — FastAPI</li>
+                    <li><code className="inline-code">./start.sh logs caddy</code> — reverse proxy</li>
+                    <li><code className="inline-code">./start.sh logs postgres</code> — database</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="deploy-step" style={{ borderBottom: "none", paddingBottom: 0 }}>
+              <div className="deploy-step-num">●</div>
+              <div className="deploy-step-content">
+                <div className="deploy-step-title">Status</div>
+                <div className="deploy-code" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+                  ./start.sh status
+                </div>
+                <div className="deploy-step-hint">
+                  Check whether Byaan is running.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="reveal"
           style={{
             marginTop: 56,
             display: "grid",
@@ -197,7 +253,7 @@ const SelfHost = () => {
             onClick={() => trackCtaClick({ cta: "selfhost_docs", location: "self_host", url: "/docs" })}
           >
             <BookIcon size={16} />
-            Read the self-host docs
+            Read the team version docs
           </a>
           <a
             className="btn btn-outline btn-lg"

@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="docs/licensing.md"><img src="https://img.shields.io/badge/license-MIT%20%2B%20ELv2-blue.svg" alt="MIT and Elastic License 2.0" /></a>
-  <a href="https://github.com/byaanai/byaan/releases"><img src="https://img.shields.io/github/v/release/byaanai/byaan" alt="Latest Release" /></a>
+  <a href="https://github.com/byaan-ai/byaan/releases"><img src="https://img.shields.io/github/v/release/byaan-ai/byaan" alt="Latest Release" /></a>
   <a href="https://hub.docker.com/r/byaan/self-hosted"><img src="https://img.shields.io/docker/pulls/byaan/self-hosted" alt="Docker Pulls" /></a>
   <a href="https://www.byaan.ai"><img src="https://img.shields.io/badge/website-byaan.ai-orange" alt="Website" /></a>
 </p>
@@ -23,7 +23,7 @@
   <a href="docs/security/read-only-guardrails.md">Read-Only Guardrails</a> &middot;
   <a href="docs/security/github-actions-hardening.md">Actions Hardening</a> &middot;
   <a href="CONTRIBUTING.md">Contributing</a> &middot;
-  <a href="https://github.com/byaanai/byaan/issues">Issues</a>
+  <a href="https://github.com/byaan-ai/byaan/issues">Issues</a>
 </p>
 
 <br />
@@ -67,33 +67,63 @@ We believe your databases should stay private: on your laptop or within your org
 
 ## Quick Start
 
-Pick the path that matches your situation:
+<p><a href="#mac-app"><img src="https://img.shields.io/badge/Mac_App-Download-blue?style=for-the-badge" /></a></p>
+<p><a href="#community-version"><img src="https://img.shields.io/badge/Community_Version-Docker-green?style=for-the-badge" /></a></p>
+<p><a href="#team-version"><img src="https://img.shields.io/badge/Team_Version-Docker-orange?style=for-the-badge" /></a></p>
 
 | You want… | Use this |
 |---|---|
-| Byaan on my Mac, just for me | [Mac app](#mac-app-individual) |
-| Byaan in Docker, single shared instance, no auth | [Community Docker](#community-docker-single-user) |
-| Byaan for my team — auth, RBAC, Slack, HTTPS | [Self-host for teams](#self-host-for-teams) ← most teams want this |
+| Byaan on my Mac, just for me | [Mac App](#mac-app) |
+| Byaan in Docker, single shared instance, no auth | [Community Version](#community-version) |
+| Byaan for my team — auth, RBAC, Slack, HTTPS | [Team Version](#team-version) ← most teams want this |
 
-### Mac app (individual)
+---
 
-Download Byaan for macOS from the [latest release](https://github.com/byaanai/byaan/releases) or from [byaan.ai](https://www.byaan.ai).
+### Mac App
 
-Open the app, connect a database, and start asking questions. No account needed — configure your LLM provider inside the app.
+Download Byaan for macOS from the [latest release](https://github.com/byaan-ai/byaan/releases) or from [byaan.ai](https://www.byaan.ai).
 
-### Community Docker (single-user)
+Open the app, connect a database, and start asking questions. No account needed — configure your preferred LLM provider from within the app.
 
-Run the same experience as the Mac app inside Docker. No auth, no users, no Slack — meant for a single developer or trying it out.
+---
+
+### Community Version
+
+**Docker (fastest)**
 
 ```bash
-git clone https://github.com/byaanai/byaan.git
+git clone https://github.com/byaan-ai/byaan.git
 cd byaan
 docker compose up -d
 ```
 
-Open http://localhost:17434.
+Open http://localhost:17434 and start querying.
 
-### Self-host for teams
+**Development**
+
+```bash
+git clone https://github.com/byaan-ai/byaan.git
+cd byaan
+make setup        # Build Docker images (community/SQLite version)
+make dev          # Start backend (port 17433) + frontend (port 17434) with logs
+make dev-detach   # Start in background
+make stop         # Stop services
+```
+
+If you use Claude Code, Cursor, Codex CLI, or Gemini CLI, run `/byaan:start` to automate the full setup: it installs dependencies, frees ports, starts services, analyzes your codebase, and configures MCP. Run `/byaan:learn` after schema changes to re-analyze.
+
+| Command | What it does |
+| --- | --- |
+| `make setup` | Build Docker images (community version) |
+| `make dev` | Start community version (SQLite, ports 17433/17434) with logs |
+| `make dev-detach` | Start community version in background |
+| `make stop` | Stop community version |
+| `/byaan:start` | Full onboarding (dependencies, services, MCP, codebase analysis) |
+| `/byaan:learn` | Re-analyze codebase after schema changes |
+
+---
+
+### Team Version
 
 The full multi-user deployment. One container ships PostgreSQL, the FastAPI backend, the React frontend, and Caddy. Live on port 8080 in five minutes.
 
@@ -115,42 +145,44 @@ ORG_NAME=YourCompany
 DOMAIN=app.yourcompany.com   # optional — enables Let's Encrypt HTTPS
 ```
 
-**3. Start**:
+**3. Start:**
 
 ```bash
 ./start.sh
 ```
 
-Open `http://your-server:8080` (or your `DOMAIN`). Sign in as the master admin you just configured, then invite teammates from the admin panel.
+Open `http://your-server:8080` (or your `DOMAIN`). Sign in as the master admin you just configured, then invite teammates from **Settings → Members → Invite**.
+
+> **Note:** SMTP is optional. Without it, invitations are still created and the admin shares the generated link manually from the Members page. To send invitation emails automatically, add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, and `SMTP_USE_TLS` to `.env`. See [`docs/self-hosted/env.example`](docs/self-hosted/env.example) for the full reference.
 
 **What you get:**
 
-- Multi-user auth with email invitations and RBAC roles
+- Multi-user auth with invitations and RBAC roles (SMTP optional — share invitation links manually if email isn't configured)
 - Slack integration — add `@byaan` to any channel, answers post in-thread
 - Optional Google OAuth SSO (drop in client ID + secret)
 - Automatic HTTPS via Let's Encrypt when `DOMAIN` is set
 - Blue-green zero-downtime updates: `./start.sh update`
 - All data in a single Docker volume — easy `pg_dump` backups
 
-Common commands: `./start.sh stop` · `./start.sh logs` · `./start.sh status` · `./start.sh remove` (keeps data) · `./start.sh remove --data` (wipes everything).
+**Common commands:**
+
+| Command | What it does |
+| --- | --- |
+| `./start.sh` | Start Byaan |
+| `./start.sh stop` | Stop Byaan |
+| `./start.sh update` | Pull latest image and recreate container (blue-green, zero-downtime) |
+| `./start.sh status` | Check if running |
+| `./start.sh logs` | Tail logs from all services |
+| `./start.sh logs backend` | Tail FastAPI backend logs |
+| `./start.sh logs caddy` | Tail Caddy reverse-proxy logs |
+| `./start.sh logs postgres` | Tail PostgreSQL logs |
+| `./start.sh remove` | Remove container, keep data volume |
+| `./start.sh remove --data` | Remove container and wipe all data |
 
 Full reference: [docs/self-hosted/README.md](docs/self-hosted/README.md).
 
-### Development (contributors)
+**Development (contributors):**
 
-Byaan Community Version:
-```bash
-git clone https://github.com/byaanai/byaan.git
-cd byaan
-make setup        # Build Docker images (community/SQLite version)
-make dev          # Start backend (port 17433) + frontend (port 17434) with logs
-make dev-detach   # Start in background
-make stop         # Stop services
-```
-
-Open http://localhost:17434 to access the app.
-
-Byaan for Teams - hosted development version:
 ```bash
 make hosted-build # Build images and start hosted version (ports 8000/5173) in background
 make hosted       # Start hosted version in background
@@ -158,20 +190,14 @@ make hosted-logs  # Start with visible logs
 make hosted-stop  # Stop hosted services
 ```
 
-If you use Claude Code, Cursor, Codex CLI, or Gemini CLI, run `/byaan:start` to automate the full setup: it installs dependencies, frees ports, starts services, analyzes your codebase, and configures MCP. Run `/byaan:learn` after schema changes to re-analyze.
-
 | Command | What it does |
 | --- | --- |
-| `make setup` | Build Docker images (community version) |
-| `make dev` | Start community version (SQLite, ports 17433/17434) with logs |
-| `make dev-detach` | Start community version in background |
 | `make hosted-build` | Build images and start hosted version (PostgreSQL, ports 8000/5173) in background |
 | `make hosted` | Start hosted version (PostgreSQL, ports 8000/5173) in background |
 | `make hosted-logs` | Start hosted version with logs |
-| `make stop` | Stop community version |
 | `make hosted-stop` | Stop hosted version |
-| `/byaan:start` | Full onboarding (dependencies, services, MCP, codebase analysis) |
-| `/byaan:learn` | Re-analyze codebase after schema changes |
+
+Open http://localhost:5173 (frontend) or http://localhost:8000 (backend API).
 
 ## MCP Integration (Model Context Protocol)
 
@@ -241,13 +267,13 @@ command = "uv"
 args = ["--directory", "<project_root>", "run", "python", "-m", "server.mcp.stdio_server"]
 ```
 
-### Hosted (HTTP)
+### Byaan Cloud (HTTP)
 
-For hosted deployments, generate an MCP API key (Profile menu > MCP Keys) and use the HTTP endpoint:
+For Byaan's managed cloud at analytics.byaan.ai (not the self-hosted team version), generate an MCP API key (Profile menu > MCP Keys) and use the HTTP endpoint:
 
 | Mode                        | URL                                  |
 | --------------------------- | ------------------------------------ |
-| Hosted (analytics.byaan.ai) | `https://analytics.byaan.ai/api/mcp/` |
+| Byaan Cloud (analytics.byaan.ai) | `https://analytics.byaan.ai/api/mcp/` |
 
 **Claude Code:**
 ```bash
@@ -308,6 +334,12 @@ python3 server/scripts/export_notebooks_to_demo.py
 This exports all notebook data (datasets, messages, queries, dashboards) into `server/example_data/demo_notebooks.json` and auto-increments the version. On app restart, the system will detect the version change and seed the updated notebooks.
 
 For detailed documentation, see: `server/scripts/README_EXPORT_NOTEBOOKS.md`
+
+## Team Version Deployment
+
+For production team deployments with PostgreSQL, Caddy, authentication, invitations, RBAC, Google OAuth, Slack integration, and shared dashboards, see the [Team Version setup above](#team-version) or the full reference at [docs/self-hosted/README.md](docs/self-hosted/README.md).
+
+For local community development, use `make dev` and open http://localhost:17434.
 
 ## What Leaves Your Machine?
 
@@ -400,7 +432,7 @@ Copy the relevant file to `.env` and fill in your values. LLM API keys are confi
 If Byaan is useful to you, consider giving it a star — you'll get notified of new releases automatically.
 
 <!-- Uncomment once you have traction:
-[![Star History Chart](https://api.star-history.com/svg?repos=byaanai/byaan&type=Date)](https://star-history.com/#byaanai/byaan&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=byaan-ai/byaan&type=Date)](https://star-history.com/#byaan-ai/byaan&Date)
 -->
 
 ## Contributing
@@ -411,14 +443,14 @@ Contributions are welcome! Whether it's bug fixes, new features, documentation, 
 2. Make your changes
 3. Submit a pull request
 
-Look for issues labeled [`good first issue`](https://github.com/byaanai/byaan/labels/good%20first%20issue) if you're looking for a place to start.
+Look for issues labeled [`good first issue`](https://github.com/byaan-ai/byaan/labels/good%20first%20issue) if you're looking for a place to start.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## Community
 
-- [GitHub Issues](https://github.com/byaanai/byaan/issues) — bug reports and feature requests
-- [GitHub Discussions](https://github.com/byaanai/byaan/discussions) — questions and ideas
+- [GitHub Issues](https://github.com/byaan-ai/byaan/issues) — bug reports and feature requests
+- [GitHub Discussions](https://github.com/byaan-ai/byaan/discussions) — questions and ideas
 - [Website](https://www.byaan.ai) — product info and downloads
 
 ## Support

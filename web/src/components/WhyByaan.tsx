@@ -153,10 +153,10 @@ const WhyByaan = () => {
                 <div className="ownership-item">
                   <div className="ownership-icon team">T</div>
                   <div className="ownership-text">
-                    <div className="ownership-text-main">Team Self-host</div>
-                    <div className="ownership-text-sub">One-line install · auth · Slack · HTTPS · AGPL</div>
+                    <div className="ownership-text-main">Team Version</div>
+                    <div className="ownership-text-sub">One-line install · auth · Slack · HTTPS</div>
                   </div>
-                  <span className="ownership-tag host">self-host</span>
+                  <span className="ownership-tag host">team</span>
                 </div>
                 <div className="ownership-item">
                   <div className="ownership-icon ro">RO</div>

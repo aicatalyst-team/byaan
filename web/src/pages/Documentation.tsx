@@ -91,8 +91,11 @@ const optionalEnv = [
 const teamCommands = [
   { cmd: "./start.sh", desc: "Start Byaan" },
   { cmd: "./start.sh stop", desc: "Stop Byaan" },
-  { cmd: "./start.sh update", desc: "Pull latest image, restart with existing data" },
-  { cmd: "./start.sh logs [backend|caddy|postgres]", desc: "Tail logs" },
+  { cmd: "./start.sh update", desc: "Update to latest version" },
+  { cmd: "./start.sh logs", desc: "View all logs" },
+  { cmd: "./start.sh logs backend", desc: "View backend logs only" },
+  { cmd: "./start.sh logs caddy", desc: "View web server logs" },
+  { cmd: "./start.sh logs postgres", desc: "View database logs" },
   { cmd: "./start.sh status", desc: "Check if running" },
   { cmd: "./start.sh remove", desc: "Remove container, keep data" },
   { cmd: "./start.sh remove --data", desc: "Remove container and all data" },
@@ -101,7 +104,8 @@ const teamCommands = [
 const tocSections = [
   { id: "quick-start", label: "Quick start" },
   { id: "core", label: "Core capabilities" },
-  { id: "self-host", label: "Self-host for teams" },
+  { id: "self-host", label: "Team Version" },
+  { id: "updates", label: "Updates & logs" },
   { id: "security", label: "Security model" },
 ];
 
@@ -132,7 +136,7 @@ const Documentation = () => {
             <span className="font-mono text-sm text-primary">Documentation</span>
           </div>
           <h1 className="mb-6 max-w-3xl font-mono text-4xl font-bold leading-tight md:text-6xl">
-            Run Byaan locally or self-host for your team
+            Run Byaan locally or deploy the Team Version
           </h1>
           <p className="max-w-3xl text-lg leading-relaxed text-muted-foreground">
             The Mac app is free for individuals and runs entirely on your machine. The team
@@ -149,7 +153,7 @@ const Documentation = () => {
             <Button asChild variant="outline" size="lg" className="gap-2">
               <a href="#self-host">
                 <Server className="h-4 w-4" />
-                Self-host for teams
+                Team Version
               </a>
             </Button>
             <Button asChild variant="outline" size="lg">
@@ -159,7 +163,7 @@ const Documentation = () => {
             </Button>
           </div>
 
-          <nav className="mt-10 flex flex-wrap gap-2 border-t border-border pt-6">
+          <nav className="mt-10 flex flex-wrap items-center gap-2 border-t border-border pt-6">
             <span className="mr-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
               On this page
             </span>
@@ -209,7 +213,7 @@ const Documentation = () => {
 
         <section id="self-host" className="mb-16 scroll-mt-24">
           <div className="mb-6 flex items-baseline justify-between gap-4">
-            <h2 className="font-mono text-3xl font-bold">Self-host for teams</h2>
+            <h2 className="font-mono text-3xl font-bold">Team Version</h2>
             <a
               href={SELF_HOST_README}
               target="_blank"
@@ -335,15 +339,7 @@ const Documentation = () => {
             </ul>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card className="border-border bg-card p-5">
-              <RefreshCw className="mb-3 h-5 w-5 text-primary" />
-              <h4 className="mb-1 font-mono text-sm font-semibold">Zero-downtime updates</h4>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">./start.sh update</code>{" "}
-                pulls the latest image and restarts with your existing data.
-              </p>
-            </Card>
+          <div className="grid gap-4 md:grid-cols-2">
             <Card className="border-border bg-card p-5">
               <HardDrive className="mb-3 h-5 w-5 text-primary" />
               <h4 className="mb-1 font-mono text-sm font-semibold">Backups</h4>
@@ -357,8 +353,41 @@ const Documentation = () => {
               <Mail className="mb-3 h-5 w-5 text-primary" />
               <h4 className="mb-1 font-mono text-sm font-semibold">Team invites</h4>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Configure SMTP to email invitations. Or skip SMTP and create users via the admin
-                panel.
+                Configure SMTP to email invitations automatically. Or skip SMTP — invitations
+                are still created and the admin copies the generated link from the Members
+                page to share manually.
+              </p>
+            </Card>
+          </div>
+        </section>
+
+        <section id="updates" className="mb-16 scroll-mt-24">
+          <h2 className="mb-6 font-mono text-3xl font-bold">Updates &amp; logs</h2>
+          <p className="mb-8 max-w-3xl text-muted-foreground">
+            Keep your Team Version current with a single command. Data and configuration are
+            preserved across updates. Use the log commands to monitor or debug any service.
+          </p>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="border-border bg-card p-5">
+              <RefreshCw className="mb-3 h-5 w-5 text-primary" />
+              <h4 className="mb-1 font-mono text-sm font-semibold">Zero-downtime updates</h4>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">./start.sh update</code>{" "}
+                pulls the latest image, recreates the container, and mounts the same{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">byaan_data</code>{" "}
+                volume — no data loss.
+              </p>
+            </Card>
+            <Card className="border-border bg-card p-5">
+              <Terminal className="mb-3 h-5 w-5 text-primary" />
+              <h4 className="mb-1 font-mono text-sm font-semibold">Targeted log tailing</h4>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Pass a service name to scope output:{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">backend</code>,{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">caddy</code>, or{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">postgres</code>. Omit
+                it to follow all services at once.
               </p>
             </Card>
           </div>

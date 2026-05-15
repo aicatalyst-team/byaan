@@ -183,8 +183,7 @@ jobs:
               "worker_url": "$WORKER_URL"
             },
             "github": {
-              "client_id": "$GITHUB_OAUTH_CLIENT_ID",
-              "client_secret": null
+              "client_id": "$GITHUB_OAUTH_CLIENT_ID"
             }
           }
           EOF
@@ -208,8 +207,7 @@ jobs:
               "worker_url": "$WORKER_URL"
             },
             "github": {
-              "client_id": "$GITHUB_OAUTH_CLIENT_ID",
-              "client_secret": null
+              "client_id": "$GITHUB_OAUTH_CLIENT_ID"
             }
           }
           EOF

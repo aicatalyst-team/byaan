@@ -108,6 +108,19 @@ export const GitHubService = {
     return res.data as { connected: boolean; username: string }
   },
 
+  async startDeviceFlow() {
+    const res = await apiFetch('/oauth/device/start', { method: 'POST' })
+    return res.data as { device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number }
+  },
+
+  async pollDeviceToken(deviceCode: string) {
+    const res = await apiFetch('/oauth/device/poll', {
+      method: 'POST',
+      body: JSON.stringify({ device_code: deviceCode }),
+    })
+    return res.data as { status: string; connected: boolean; username: string | null }
+  },
+
   async getStatus() {
     const res = await apiFetch('/oauth/status')
     return res.data as { connected: boolean; username: string | null; scopes: string[] | null }

@@ -37,6 +37,7 @@ export interface TenantInvitation {
     full_name?: string
   }
   invitation_link?: string
+  email_sent?: boolean
 }
 
 export interface InviteMemberRequest {
@@ -51,4 +52,29 @@ export interface UpdateMemberRoleRequest {
 
 export interface ResendInvitationRequest {
   invitation_id: string
+}
+
+export interface MemberStats {
+  user_id: string
+  member_id: string
+  full_name: string | null
+  email: string | null
+  role: TenantRole
+  joined_at: string | null
+  notebooks_count: number
+  dashboards_count: number
+  queries_count: number
+  datasources_count: number
+}
+
+export interface SlackStats {
+  notebooks_count: number
+  dashboards_count: number
+  queries_count: number
+}
+
+export interface MemberStatsResponse {
+  items: MemberStats[]
+  total: number
+  slack: SlackStats
 }

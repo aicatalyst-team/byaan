@@ -23,9 +23,12 @@ GITHUB_OAUTH_CLIENT_ID_KEY = "github_oauth_client_id"
 GITHUB_OAUTH_CLIENT_SECRET_KEY = "github_oauth_client_secret"
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
 GITHUB_API_BASE = "https://api.github.com"
 GITHUB_SCOPES = "repo read:user"
 REQUIRED_SCOPES = {"repo"}
+
+_device_code_store: dict[str, dict] = {}  # device_code → {tenant_id, user_id}
 
 
 def _get_frontend_url() -> str:
@@ -69,17 +72,17 @@ async def get_github_oauth_credentials(session: AsyncSession | None = None) -> t
     if not client_id_setting:
         return "", ""
 
+    client_id = client_id_setting.setting_value
     secret_setting = await SettingsService.get_setting_by_key(session, GITHUB_OAUTH_CLIENT_SECRET_KEY)
     if not secret_setting:
-        return "", ""
+        return client_id, ""
 
-    client_id = client_id_setting.setting_value
     try:
         decrypted = await CryptoService.decrypt_config(secret_setting.setting_value, session)
         client_secret = decrypted.get("value", "")
     except Exception:
         logger.error("[GITHUB OAUTH] Failed to decrypt client secret")
-        return "", ""
+        return client_id, ""
 
     return client_id, client_secret
 
@@ -296,8 +299,64 @@ async def get_latest_commit_sha(token: str, owner: str, repo: str, branch: str) 
 
 
 async def is_oauth_configured(session: AsyncSession | None = None) -> bool:
-    client_id, client_secret = await get_github_oauth_credentials(session)
-    return bool(client_id) and bool(client_secret)
+    client_id, _ = await get_github_oauth_credentials(session)
+    return bool(client_id)
+
+
+async def initiate_device_flow(
+    client_id: str,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> dict:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(
+            GITHUB_DEVICE_CODE_URL,
+            json={"client_id": client_id, "scope": GITHUB_SCOPES},
+            headers={"Accept": "application/json"},
+        )
+        if response.status_code != 200:
+            raise ValueError(f"Device flow initiation failed: {response.text}")
+
+        data = response.json()
+        if "error" in data:
+            raise ValueError(f"GitHub Device Flow error: {data.get('error_description', data['error'])}")
+
+        device_code = data["device_code"]
+        _device_code_store[device_code] = {"tenant_id": tenant_id, "user_id": user_id}
+        logger.info("[GITHUB DEVICE FLOW] Initiated, user_code=%s", data.get("user_code"))
+        return data
+
+
+async def poll_device_token(device_code: str, client_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(
+            GITHUB_TOKEN_URL,
+            json={
+                "client_id": client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            },
+            headers={"Accept": "application/json"},
+        )
+        data = response.json()
+        error = data.get("error")
+
+        if error in ("authorization_pending",):
+            return {"status": "pending"}
+        if error == "slow_down":
+            return {"status": "slow_down"}
+        if error == "access_denied":
+            _device_code_store.pop(device_code, None)
+            return {"status": "denied"}
+        if error == "expired_token":
+            _device_code_store.pop(device_code, None)
+            return {"status": "expired"}
+        if error:
+            _device_code_store.pop(device_code, None)
+            raise ValueError(f"GitHub Device Flow error: {data.get('error_description', error)}")
+
+        context = _device_code_store.pop(device_code, {})
+        return {"status": "success", "token_data": data, "context": context}
 
 
 async def validate_and_save_pat(token: str, tenant_id: UUID, user_id: UUID, session: AsyncSession) -> dict:

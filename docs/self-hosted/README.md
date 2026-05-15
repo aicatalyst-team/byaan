@@ -103,7 +103,7 @@ When `DOMAIN` is set, Byaan automatically obtains SSL certificates from Let's En
 
 ### Email/SMTP (Optional)
 
-Required for sending team invitations.
+Configures automatic email delivery for team invitations. **Without SMTP, invitations still work** — the admin copies the generated invitation link from the Members page and shares it manually. Configure SMTP only if you want invitation emails sent automatically.
 
 | Variable | Description |
 |----------|-------------|
