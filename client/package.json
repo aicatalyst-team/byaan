@@ -79,5 +79,5 @@
     "typescript-eslint": "^8.35.1",
     "vite": "^7.0.4"
   },
-  "packageManager": "pnpm@10.18.3+sha512.u9FubXKG/X4B9rPAs8kyzaKWXAapCDKPdGY/EKmupR8RKe6mFRNL+ZKDGwCeq+Fn7LcAi1l/QP+bx1lGqt+wjQ=="
+  "packageManager": "pnpm@10.18.3"
 }
