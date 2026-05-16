@@ -78,7 +78,7 @@ function formatModelName(modelPath: string): string {
     "claude-haiku-4.5": "Claude Haiku 4.5",
     "grok-code-fast-1": "Grok Code Fast 1",
     "glm-4.5": "GLM 4.5",
-    "glm-4.7": "GLM 4.7",
+    "glm-5.1": "GLM 5.1",
   };
 
   return formatMap[modelName] || modelName;

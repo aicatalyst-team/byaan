@@ -17,6 +17,9 @@ from server.schemas.github import (
     AnalysisRequest,
     AnalysisStatusResponse,
     GitHubAuthConfigResponse,
+    GitHubDeviceFlowPollRequest,
+    GitHubDeviceFlowPollResponse,
+    GitHubDeviceFlowStartResponse,
     GitHubOAuthCallbackRequest,
     GitHubOAuthSettingsRequest,
     GitHubOAuthSettingsResponse,
@@ -156,6 +159,72 @@ async def oauth_disconnect(
 ):
     await github_service.delete_github_token(auth.tenant_id, auth.user_id, session)
     return success_response(message="GitHub disconnected")
+
+
+# --- Device Flow Endpoints ---
+
+
+@router.post("/github/oauth/device/start")
+async def device_flow_start(
+    auth: AuthContext = Depends(require_scope(Scope.USER_UPDATE)),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        client_id, _ = await github_service.get_github_oauth_credentials(session)
+        if not client_id:
+            return error_response(message="GitHub OAuth is not configured")
+        data = await github_service.initiate_device_flow(client_id, auth.tenant_id, auth.user_id)
+        return success_response(
+            data=GitHubDeviceFlowStartResponse(
+                device_code=data["device_code"],
+                user_code=data["user_code"],
+                verification_uri=data.get("verification_uri", "https://github.com/login/device"),
+                expires_in=data.get("expires_in", 900),
+                interval=data.get("interval", 5),
+            ).model_dump(),
+            message="Device flow initiated",
+        )
+    except Exception as e:
+        logger.error(f"[GITHUB] Device flow start failed: {e}")
+        return error_response(message=str(e))
+
+
+@router.post("/github/oauth/device/poll")
+async def device_flow_poll(
+    body: GitHubDeviceFlowPollRequest,
+    auth: AuthContext = Depends(require_scope(Scope.USER_UPDATE)),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        client_id, _ = await github_service.get_github_oauth_credentials(session)
+        result = await github_service.poll_device_token(body.device_code, client_id)
+
+        if result["status"] == "success":
+            token_data = result["token_data"]
+            missing = _check_oauth_scopes(token_data)
+            if missing:
+                raise ValueError(
+                    f"GitHub token is missing required scope(s): {', '.join(missing)}. "
+                    "Please reconnect and grant all requested permissions."
+                )
+            context = result.get("context", {})
+            tenant_id = context.get("tenant_id") or auth.tenant_id
+            user_id = context.get("user_id") or auth.user_id
+            await github_service.save_github_token(tenant_id, user_id, token_data, session)
+            user_info = await github_service.get_authenticated_user(token_data["access_token"])
+            return success_response(
+                data=GitHubDeviceFlowPollResponse(
+                    status="success", connected=True, username=user_info["login"]
+                ).model_dump(),
+                message="GitHub connected successfully",
+            )
+
+        return success_response(data=GitHubDeviceFlowPollResponse(status=result["status"]).model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"[GITHUB] Device flow poll failed: {e}")
+        return error_response(message="Failed to poll device flow status")
 
 
 # --- Auth Config & PAT Endpoints ---

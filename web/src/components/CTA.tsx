@@ -50,16 +50,16 @@ const CTA = () => {
             <div className="path-icon">
               <DockerIcon size={22} />
             </div>
-            <div className="path-title">Self-host</div>
+            <div className="path-title">Team Version</div>
             <p className="path-body">
-              One-line install for your team. Multi-user auth, RBAC, Slack, and HTTPS — out of the box. AGPL licensed.
+              One-line install for your team. Multi-user auth, RBAC, Slack, and HTTPS — out of the box.
             </p>
             <a
               className="btn btn-outline btn-lg"
               href="/docs"
               onClick={() => trackCtaClick({ cta: "selfhost_docs", location: "cta_section", url: "/docs" })}
             >
-              Self-host docs →
+              Team version docs →
             </a>
           </div>
 

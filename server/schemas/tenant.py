@@ -46,6 +46,7 @@ class InvitationRead(BaseModel):
     created_at: datetime
     invited_by: UserInfo | None = None
     invitation_link: str | None = None
+    email_sent: bool | None = None
 
     @field_serializer("expires_at", "accepted_at", "created_at")
     def serialize_datetime(self, dt: datetime | None, _info):
@@ -100,6 +101,45 @@ class MemberListResponse(BaseModel):
 
     items: list[MemberRead]
     total: int
+
+
+class MemberStatsRead(BaseModel):
+    """Per-member stats for the Team Stats dialog."""
+
+    user_id: UUID
+    member_id: UUID
+    full_name: str | None = None
+    email: str | None = None
+    role: str
+    joined_at: datetime | None = None
+    notebooks_count: int
+    dashboards_count: int
+    queries_count: int
+    datasources_count: int
+
+    @field_serializer("joined_at")
+    def serialize_datetime(self, dt: datetime | None, _info):
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.isoformat() + "Z"
+        return dt.isoformat()
+
+
+class SlackStatsRead(BaseModel):
+    """Tenant-level Slack stats (no per-member attribution)."""
+
+    notebooks_count: int
+    dashboards_count: int
+    queries_count: int
+
+
+class MemberStatsListResponse(BaseModel):
+    """Response schema for member stats listing."""
+
+    items: list[MemberStatsRead]
+    total: int
+    slack: SlackStatsRead
 
 
 class UpdateMemberRoleRequest(BaseModel):

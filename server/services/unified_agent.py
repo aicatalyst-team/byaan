@@ -61,7 +61,7 @@ from server.tools.filters import (
     remove_dashboard_filter,
     update_dashboard_filter,
 )
-from server.tools.memory import get_instruction_tools
+from server.tools.instruction import get_instruction_tools
 from server.tools.mongo import get_mongo_tools
 from server.tools.plan_tools import get_plan_tools
 from server.tools.skill_executor import get_skill_executor_tools

@@ -66,7 +66,7 @@ jobs:
       - name: Enable pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@10.10.0 --activate
+          corepack prepare pnpm@10.18.3 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

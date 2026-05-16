@@ -9,7 +9,6 @@ from uuid import UUID
 from fastmcp import Context, FastMCP
 
 from server.mcp.tool_wrappers import (
-    add_instruction_wrapper,
     add_learning_wrapper,
     apply_html_patch_wrapper,
     create_custom_skill_wrapper,
@@ -32,7 +31,6 @@ from server.mcp.tool_wrappers import (
     get_user_instructions_wrapper,
     get_user_style_guidelines_wrapper,
     remove_dashboard_filter_wrapper,
-    remove_instruction_wrapper,
     remove_learning_wrapper,
     save_query_wrapper,
     save_skill_query_wrapper,
@@ -391,35 +389,6 @@ def register_all_tools(mcp: FastMCP, get_or_create_session_func):
         )
 
     # Instruction Tools
-    @mcp.tool()
-    async def add_instruction(instruction: str, context: Context = None) -> str:
-        """
-        Save a user preference or standing instruction to the workspace.
-
-        Use this for preferences like chart styles, naming conventions, or how to present data.
-        Do NOT use this for data patterns or query fixes — use add_learning for those.
-
-        Args:
-            instruction: The instruction to save (will be added as a bullet point)
-        """
-        session = await extract_session_from_context(get_or_create_session_func, context)
-        return await add_instruction_wrapper(
-            instruction, session["tenant_id"], session["user_id"], session["notebook_id"]
-        )
-
-    @mcp.tool()
-    async def remove_instruction(instruction_to_remove: str, context: Context = None) -> str:
-        """
-        Remove an instruction from workspace instructions.
-
-        Args:
-            instruction_to_remove: Text to search for in existing instructions
-        """
-        session = await extract_session_from_context(get_or_create_session_func, context)
-        return await remove_instruction_wrapper(
-            instruction_to_remove, session["tenant_id"], session["user_id"], session["notebook_id"]
-        )
-
     @mcp.tool()
     async def search_instructions(query: str, context: Context = None) -> str:
         """

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.auth.dependencies import AuthContext, require_scope
 from server.auth.scopes import Scope
 from server.db.session import get_async_session
+from server.models.tenant_member import TenantRole
 from server.repositories.tenant_invitation import TenantInvitationRepository
 from server.schemas.standard_response import success_response
 from server.schemas.tenant import (
@@ -17,6 +18,8 @@ from server.schemas.tenant import (
     InvitationRead,
     MemberListResponse,
     MemberRead,
+    MemberStatsListResponse,
+    MemberStatsRead,
     UpdateMemberRoleRequest,
 )
 from server.services.tenant_service import TenantService
@@ -72,6 +75,45 @@ async def list_members(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while listing members",
+        )
+
+
+@router.get("/tenants/{tenant_id}/stats/members")
+async def list_member_stats(
+    tenant_id: UUID,
+    auth: AuthContext = Depends(require_scope(Scope.TENANT_READ)),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Aggregate per-member stats (notebooks, dashboards, datasources) for a tenant."""
+    _check_team_enabled()
+    try:
+        if auth.tenant_id != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have access to this tenant",
+            )
+
+        if auth.role not in (TenantRole.OWNER, TenantRole.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owners and admins can view team stats",
+            )
+
+        stats = await TenantService.get_member_stats(tenant_id, session)
+        items = [MemberStatsRead.model_validate(s) for s in stats["members"]]
+        response = MemberStatsListResponse(items=items, total=len(items), slack=stats["slack"])
+
+        return success_response(
+            data=response.model_dump(),
+            message=f"Retrieved stats for {len(items)} member(s)",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing member stats for tenant {tenant_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while listing member stats",
         )
 
 
@@ -219,7 +261,7 @@ async def create_invitation(
             host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
             origin = f"{scheme}://{host}" if host else None
 
-        invitation, invitation_link = await TenantService.send_invitation(
+        invitation, invitation_link, email_sent = await TenantService.send_invitation(
             tenant_id=tenant_id,
             email=payload.email,
             role=payload.role,
@@ -231,10 +273,16 @@ async def create_invitation(
 
         invitation_read = InvitationRead.model_validate(invitation)
         invitation_read.invitation_link = invitation_link
+        invitation_read.email_sent = email_sent
 
+        message = (
+            f"Invitation sent to {payload.email}"
+            if email_sent
+            else f"Invitation created for {payload.email}. Email is not configured — share the link manually."
+        )
         return success_response(
             data=invitation_read.model_dump(),
-            message=f"Invitation sent to {payload.email}",
+            message=message,
         )
     except HTTPException:
         raise
@@ -263,7 +311,9 @@ async def resend_invitation(
             host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
             origin = f"{scheme}://{host}" if host else None
 
-        invitation, invitation_link = await TenantService.resend_invitation(invitation_id, session, base_url=origin)
+        invitation, invitation_link, email_sent = await TenantService.resend_invitation(
+            invitation_id, session, base_url=origin
+        )
 
         # Verify user has access to this tenant
         if auth.tenant_id != invitation.tenant_id:
@@ -274,10 +324,16 @@ async def resend_invitation(
 
         invitation_read = InvitationRead.model_validate(invitation)
         invitation_read.invitation_link = invitation_link
+        invitation_read.email_sent = email_sent
 
+        message = (
+            f"Invitation resent to {invitation.email}"
+            if email_sent
+            else f"New link generated for {invitation.email}. Email is not configured — share the link manually."
+        )
         return success_response(
             data=invitation_read.model_dump(),
-            message=f"Invitation resent to {invitation.email}",
+            message=message,
         )
     except HTTPException:
         raise
@@ -305,7 +361,9 @@ async def get_invitation_link(
             host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
             origin = f"{scheme}://{host}" if host else None
 
-        invitation, invitation_link = await TenantService.get_invitation_link(invitation_id, session, base_url=origin)
+        invitation, invitation_link, email_sent = await TenantService.get_invitation_link(
+            invitation_id, session, base_url=origin
+        )
 
         if auth.tenant_id != invitation.tenant_id:
             raise HTTPException(
@@ -315,6 +373,7 @@ async def get_invitation_link(
 
         invitation_read = InvitationRead.model_validate(invitation)
         invitation_read.invitation_link = invitation_link
+        invitation_read.email_sent = email_sent
 
         return success_response(
             data=invitation_read.model_dump(),
