@@ -130,6 +130,17 @@ If you use Claude Code, Cursor, Codex CLI, or Gemini CLI, run `/byaan:start` to 
 
 ### Team Version
 
+<p align="center">
+  <video
+    src="https://github.com/user-attachments/assets/e3c79173-bf57-4242-b8f1-51c735299e31"
+    autoplay
+    loop
+    muted
+    playsinline
+    width="800"
+  ></video>
+</p>
+
 The full multi-user deployment. One container ships PostgreSQL, the FastAPI backend, the React frontend, and Caddy. Live on port 8080 in five minutes.
 
 **Requirements:** Linux server (Ubuntu 20.04+, Debian 11+, or any Docker-compatible OS), 2 GB RAM (4 GB recommended), 10 GB disk, Docker installed, ports 80/443 (or 8080) free.
