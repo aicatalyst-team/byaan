@@ -25,11 +25,19 @@ export function ResizableSplitPanel({
   maxLeftWidth = 60,
   isRightPanelOpen = true,
 }: ResizableSplitPanelProps) {
-  const [leftWidth, setLeftWidth] = useState(defaultLeftWidth)
+  const clampLeftWidth = useCallback(
+    (width: number) => Math.min(Math.max(width, minLeftWidth), maxLeftWidth),
+    [minLeftWidth, maxLeftWidth]
+  )
+  const [leftWidth, setLeftWidth] = useState(() => clampLeftWidth(defaultLeftWidth))
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const rafIdRef = useRef<number | null>(null)
   const pendingWidthRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    setLeftWidth((currentWidth) => clampLeftWidth(currentWidth))
+  }, [clampLeftWidth])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -46,7 +54,7 @@ export function ResizableSplitPanel({
       const newLeftWidth = (mouseX / containerRect.width) * 100
 
       // Clamp the width between min and max
-      const clampedWidth = Math.min(Math.max(newLeftWidth, minLeftWidth), maxLeftWidth)
+      const clampedWidth = clampLeftWidth(newLeftWidth)
 
       // Store the pending width update
       pendingWidthRef.current = clampedWidth
@@ -64,7 +72,7 @@ export function ResizableSplitPanel({
         rafIdRef.current = null
       })
     },
-    [minLeftWidth, maxLeftWidth]
+    [clampLeftWidth]
   )
 
   const handleMouseUp = useCallback(() => {
@@ -100,13 +108,19 @@ export function ResizableSplitPanel({
   }, [isDragging, handleMouseMove, handleMouseUp])
 
   return (
-    <div ref={containerRef} className="flex h-full w-full relative">
+    <div ref={containerRef} className="resizable-split-panel flex h-full w-full min-w-0 relative">
       {/* Left Panel */}
       <div
         style={{
-          width: isRightPanelOpen ? `${leftWidth}%` : '100%',
-          transition: !isDragging ? 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-          willChange: isDragging ? 'width' : 'auto',
+          flexGrow: isRightPanelOpen ? 0 : 1,
+          flexShrink: isRightPanelOpen ? 0 : 1,
+          flexBasis: isRightPanelOpen ? `${leftWidth}%` : '100%',
+          maxWidth: isRightPanelOpen ? `${maxLeftWidth}%` : '100%',
+          minWidth: isRightPanelOpen ? `${minLeftWidth}%` : 0,
+          transition: !isDragging
+            ? 'flex-basis var(--split-panel-duration) var(--split-panel-easing), max-width var(--split-panel-duration) var(--split-panel-easing), min-width var(--split-panel-duration) var(--split-panel-easing)'
+            : 'none',
+          willChange: isDragging ? 'flex-basis' : 'auto',
           pointerEvents: isDragging ? 'none' : 'auto',
           contain: isDragging ? 'layout style paint' : 'none',
         }}
@@ -118,8 +132,18 @@ export function ResizableSplitPanel({
       {/* Resizable Divider */}
       <div
         onMouseDown={handleMouseDown}
-        style={{ display: isRightPanelOpen ? undefined : 'none' }}
-        className={`w-1 bg-[#2a2a2a] hover:bg-[#404040] cursor-col-resize flex-shrink-0 relative group ${
+        aria-label="Resize preview"
+        role="separator"
+        style={{
+          flexBasis: isRightPanelOpen ? 4 : 0,
+          width: isRightPanelOpen ? 4 : 0,
+          opacity: isRightPanelOpen ? 1 : 0,
+          pointerEvents: isRightPanelOpen ? 'auto' : 'none',
+          transition: !isDragging
+            ? 'flex-basis var(--split-panel-duration) var(--split-panel-easing), width var(--split-panel-duration) var(--split-panel-easing), opacity 160ms ease'
+            : 'none',
+        }}
+        className={`bg-[#2a2a2a] hover:bg-[#404040] cursor-col-resize flex-shrink-0 relative group overflow-hidden ${
           isDragging ? 'bg-[#4a9eff]' : 'transition-colors'
         }`}
       >
@@ -137,11 +161,16 @@ export function ResizableSplitPanel({
       <div
         className="h-full overflow-hidden"
         style={{
-          flex: isRightPanelOpen ? '1' : '0 0 0px',
-          width: isRightPanelOpen ? undefined : 0,
+          flexGrow: isRightPanelOpen ? 1 : 0,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+          opacity: isRightPanelOpen ? 1 : 0,
           pointerEvents: isRightPanelOpen ? 'auto' : 'none',
-          transition: !isDragging ? 'flex 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-          willChange: isDragging ? 'width' : 'auto',
+          transition: !isDragging
+            ? 'opacity 180ms ease'
+            : 'none',
+          willChange: isDragging ? 'flex-basis' : 'auto',
           contain: isDragging ? 'layout style paint' : 'none',
         }}
       >

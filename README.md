@@ -28,11 +28,16 @@
 
 <br />
 
-<!-- VIDEO PLACEHOLDER: drag-drop teaser.mp4 into a GitHub issue/PR comment, copy the
-     resulting https://github.com/user-attachments/assets/<uuid> URL, and replace this
-     block with: <video src="<URL>" controls autoplay muted loop playsinline width="800"></video> -->
 <p align="center">
-  <img src="assets/hero.png" alt="Byaan Dashboard" width="800" />
+  <video
+    src="https://github.com/user-attachments/assets/b2ffe92e-99b6-4ad9-8337-8a199da7c81c"
+    autoplay
+    loop
+    muted
+    playsinline
+    width="800"
+    poster="assets/hero.png"
+  ></video>
 </p>
 
 ---
@@ -124,6 +129,17 @@ If you use Claude Code, Cursor, Codex CLI, or Gemini CLI, run `/byaan:start` to 
 ---
 
 ### Team Version
+
+<p align="center">
+  <video
+    src="https://github.com/user-attachments/assets/e3c79173-bf57-4242-b8f1-51c735299e31"
+    autoplay
+    loop
+    muted
+    playsinline
+    width="800"
+  ></video>
+</p>
 
 The full multi-user deployment. One container ships PostgreSQL, the FastAPI backend, the React frontend, and Caddy. Live on port 8080 in five minutes.
 
