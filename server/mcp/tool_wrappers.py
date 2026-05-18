@@ -927,51 +927,13 @@ async def get_dashboard_filter_config_wrapper(
         return json.dumps({"success": False, "error": str(e)})
 
 
-async def add_instruction_wrapper(
-    instruction: str,
-    tenant_id: UUID,
-    user_id: UUID,
-    notebook_id: UUID | None = None,
-) -> str:
-    from server.tools.memory import add_instruction
-
-    try:
-        set_tenant_id(tenant_id)
-        ctx = await create_run_context(tenant_id, user_id, notebook_id, tool_name="add_instruction")
-        tool_input = json.dumps({"instruction": instruction})
-        result = await add_instruction.on_invoke_tool(ctx=ctx, input=tool_input)
-        return result
-    except Exception as e:
-        logger.error(f"Error in add_instruction_wrapper: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)})
-
-
-async def remove_instruction_wrapper(
-    instruction_to_remove: str,
-    tenant_id: UUID,
-    user_id: UUID,
-    notebook_id: UUID | None = None,
-) -> str:
-    from server.tools.memory import remove_instruction
-
-    try:
-        set_tenant_id(tenant_id)
-        ctx = await create_run_context(tenant_id, user_id, notebook_id, tool_name="remove_instruction")
-        tool_input = json.dumps({"instruction_to_remove": instruction_to_remove})
-        result = await remove_instruction.on_invoke_tool(ctx=ctx, input=tool_input)
-        return result
-    except Exception as e:
-        logger.error(f"Error in remove_instruction_wrapper: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)})
-
-
 async def search_instructions_wrapper(
     query: str,
     tenant_id: UUID,
     user_id: UUID,
     notebook_id: UUID | None = None,
 ) -> str:
-    from server.tools.memory import search_instructions
+    from server.tools.instruction import search_instructions
 
     try:
         set_tenant_id(tenant_id)

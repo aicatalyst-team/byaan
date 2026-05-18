@@ -209,20 +209,31 @@ class SlackBlockBuilder:
         """
         elements = []
         patterns = [
-            (r"\*\*([^*]+)\*\*", "bold"),
+            (r"\*\*([^*\n]+)\*\*", "bold"),
+            (r"(?<![\*\w])\*([^*\n]+)\*(?!\*)", "bold"),
+            (r"(?<![_\w])_([^_\n]+)_(?!_)", "italic"),
+            (r"`([^`\n]+)`", "code"),
+            (r"~([^~\n]+)~", "strike"),
             (r"\[([^\]]+)\]\(([^)]+)\)", "link"),
             (r"<@([A-Z0-9]+)>", "user"),
             (r":([a-z0-9_+-]+):", "emoji"),
         ]
 
-        last_end = 0
-        matches = []
-
+        raw_matches = []
         for pattern, match_type in patterns:
             for match in re.finditer(pattern, text):
-                matches.append((match.start(), match.end(), match_type, match))
+                raw_matches.append((match.start(), match.end(), match_type, match))
 
-        matches.sort(key=lambda x: x[0])
+        raw_matches.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+
+        matches = []
+        last_taken_end = -1
+        for m in raw_matches:
+            if m[0] >= last_taken_end:
+                matches.append(m)
+                last_taken_end = m[1]
+
+        last_end = 0
 
         for start, end, match_type, match in matches:
             if start > last_end:
@@ -232,6 +243,12 @@ class SlackBlockBuilder:
 
             if match_type == "bold":
                 elements.append({"type": "text", "text": match.group(1), "style": {"bold": True}})
+            elif match_type == "italic":
+                elements.append({"type": "text", "text": match.group(1), "style": {"italic": True}})
+            elif match_type == "code":
+                elements.append({"type": "text", "text": match.group(1), "style": {"code": True}})
+            elif match_type == "strike":
+                elements.append({"type": "text", "text": match.group(1), "style": {"strike": True}})
             elif match_type == "link":
                 elements.append({"type": "link", "text": match.group(1), "url": match.group(2)})
             elif match_type == "user":

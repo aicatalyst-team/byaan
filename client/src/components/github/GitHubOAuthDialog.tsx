@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Input } from '../ui/input'
-import { Loader2, ExternalLink, Check, Github, KeyRound, Lock } from 'lucide-react'
+import { Loader2, ExternalLink, Check, Github, KeyRound, Lock, Copy, CheckCheck } from 'lucide-react'
 import { openExternalUrl, isTauriApp } from '../../lib/tauri-api'
 import { GitHubService } from '../../services/github'
 
@@ -13,25 +13,34 @@ interface GitHubOAuthDialogProps {
   oauthAvailable: boolean
 }
 
-type OAuthStep = 'idle' | 'redirecting' | 'waiting' | 'success' | 'error'
+type OAuthStep = 'idle' | 'device_flow' | 'success' | 'error'
 
 export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailable }: GitHubOAuthDialogProps) {
   const [step, setStep] = useState<OAuthStep>('idle')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [oauthState, setOauthState] = useState('')
   const [authMethod, setAuthMethod] = useState<'oauth' | 'pat'>(oauthAvailable ? 'oauth' : 'pat')
   const [patToken, setPatToken] = useState('')
   const [patLoading, setPatLoading] = useState(false)
+  const [userCode, setUserCode] = useState('')
+  const [verificationUri, setVerificationUri] = useState('https://github.com/login/device')
+  const [copied, setCopied] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setAuthMethod(oauthAvailable ? 'oauth' : 'pat')
   }, [oauthAvailable])
 
+  useEffect(() => {
+    return () => { if (pollRef.current) clearTimeout(pollRef.current) }
+  }, [])
+
   const resetDialog = () => {
+    if (pollRef.current) { clearTimeout(pollRef.current); pollRef.current = null }
     setStep('idle')
     setError('')
-    setOauthState('')
+    setUserCode('')
+    setCopied(false)
     setPatToken('')
     setAuthMethod(oauthAvailable ? 'oauth' : 'pat')
   }
@@ -41,96 +50,48 @@ export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailabl
     onOpenChange(newOpen)
   }
 
-  useEffect(() => {
-    if (!open || step !== 'waiting') return
-    if (!isTauriApp()) return
-
-    let cleanup: (() => void) | undefined
-
-    const setupListener = async () => {
-      const { listen } = await import('@tauri-apps/api/event')
-      const unlisten = await listen<string>('deep-link-received', async (event) => {
-        const url = event.payload
-        if (!url.includes('github/callback')) return
-        const params = new URLSearchParams(url.split('?')[1] || '')
-        const code = params.get('code')
-        if (!code) {
-          setError('No authorization code received')
-          setStep('error')
-          return
-        }
-        try {
-          await GitHubService.callbackOAuth(code, oauthState)
-          setStep('success')
-          onSuccess?.()
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'OAuth callback failed')
-          setStep('error')
-        }
-      })
-      cleanup = unlisten
-    }
-
-    setupListener()
-    return () => { cleanup?.() }
-  }, [open, step, oauthState, onSuccess])
-
-  useEffect(() => {
-    if (!open || step !== 'waiting') return
-
-    if (isTauriApp()) {
-      const checkInitialDeepLink = async () => {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core')
-          const url = await invoke<string | null>('get_initial_deep_link')
-          if (url && url.includes('github/callback')) {
-            const params = new URLSearchParams(url.split('?')[1] || '')
-            const code = params.get('code')
-            if (code) {
-              await GitHubService.callbackOAuth(code, oauthState)
-              setStep('success')
-              onSuccess?.()
-            }
-          }
-        } catch {
-          return
-        }
-      }
-      checkInitialDeepLink()
-      return
-    }
-
-    const interval = setInterval(async () => {
-      try {
-        const status = await GitHubService.getStatus()
-        if (status.connected) {
-          clearInterval(interval)
-          setStep('success')
-          onSuccess?.()
-        }
-      } catch {
-        return
-      }
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [open, step, oauthState, onSuccess])
-
-  const startOAuth = async () => {
+  const startDeviceFlow = async () => {
     setLoading(true)
     setError('')
     try {
-      const { auth_url, state } = await GitHubService.startOAuth()
-      setOauthState(state)
+      const data = await GitHubService.startDeviceFlow()
+      setUserCode(data.user_code)
+      setVerificationUri(data.verification_uri)
+      setStep('device_flow')
 
-      if (isTauriApp()) {
-        await openExternalUrl(auth_url)
-      } else {
-        window.open(auth_url, '_blank', 'noopener,noreferrer')
+      let intervalMs = data.interval * 1000
+
+      const schedulePoll = () => {
+        pollRef.current = setTimeout(async () => {
+          try {
+            const result = await GitHubService.pollDeviceToken(data.device_code)
+            if (result.status === 'success') {
+              pollRef.current = null
+              setStep('success')
+              onSuccess?.()
+              return
+            }
+            if (result.status === 'slow_down') {
+              intervalMs = Math.min(intervalMs + 5000, 30000)
+            } else if (result.status === 'denied') {
+              setError('Authorization denied.')
+              setStep('error')
+              return
+            } else if (result.status === 'expired') {
+              setError('Code expired. Please try again.')
+              setStep('error')
+              return
+            }
+            schedulePoll()
+          } catch {
+            schedulePoll()
+          }
+        }, intervalMs)
       }
-      setStep('waiting')
+
+      schedulePoll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start OAuth')
+      setError(err instanceof Error ? err.message : 'Failed to start device flow')
       setStep('error')
     } finally {
       setLoading(false)
@@ -149,6 +110,20 @@ export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailabl
       setStep('error')
     } finally {
       setPatLoading(false)
+    }
+  }
+
+  const copyUserCode = async () => {
+    await navigator.clipboard.writeText(userCode)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const openVerificationUrl = () => {
+    if (isTauriApp()) {
+      openExternalUrl(verificationUri)
+    } else {
+      window.open(verificationUri, '_blank', 'noopener,noreferrer')
     }
   }
 
@@ -212,9 +187,9 @@ export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailabl
                     <Button variant="outline" onClick={() => handleClose(false)} className="border-[#555555] text-white hover:bg-[#3a3a3a]">
                       Cancel
                     </Button>
-                    <Button onClick={startOAuth} disabled={loading} className="bg-brand-orange hover:bg-brand-orange/90 flex items-center gap-2">
+                    <Button onClick={startDeviceFlow} disabled={loading} className="bg-brand-orange hover:bg-brand-orange/90 flex items-center gap-2">
                       {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                      <ExternalLink className="w-4 h-4" />
+                      <Github className="w-4 h-4" />
                       Authorize with GitHub
                     </Button>
                   </div>
@@ -265,18 +240,41 @@ export function GitHubOAuthDialog({ open, onOpenChange, onSuccess, oauthAvailabl
             </>
           )}
 
-          {step === 'redirecting' && (
-            <div className="text-center py-4">
-              <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Opening GitHub authorization...</p>
-            </div>
-          )}
-
-          {step === 'waiting' && (
-            <div className="text-center py-4">
-              <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-3" />
-              <p className="text-sm text-gray-400">Waiting for GitHub authorization...</p>
-              <p className="text-xs text-gray-500 mt-2">Complete the authorization in your browser, then return here.</p>
+          {step === 'device_flow' && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-400">
+                Enter this code on GitHub to authorize Byaan:
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-center">
+                  <span className="text-2xl font-mono font-bold tracking-[0.25em] text-white">{userCode}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copyUserCode}
+                  className="border-[#555555] text-white hover:bg-[#3a3a3a] shrink-0"
+                  title="Copy code"
+                >
+                  {copied ? <CheckCheck className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                </Button>
+              </div>
+              <Button
+                onClick={openVerificationUrl}
+                className="w-full bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-gray-700 text-white flex items-center justify-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open github.com/login/device
+              </Button>
+              <div className="flex items-center gap-2 text-center justify-center">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-orange" />
+                <p className="text-xs text-gray-500">Waiting for authorization...</p>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button variant="outline" onClick={() => handleClose(false)} className="border-[#555555] text-white hover:bg-[#3a3a3a]">
+                  Cancel
+                </Button>
+              </div>
             </div>
           )}
 

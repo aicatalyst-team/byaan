@@ -122,7 +122,11 @@ class SlackTableParser:
                 column_settings.append(setting)
 
         try:
-            return SlackBlockBuilder.table(rows=rows, column_settings=column_settings if column_settings else None)
+            return SlackBlockBuilder.table(
+                rows=rows,
+                column_settings=column_settings if column_settings else None,
+                use_rich_text=True,
+            )
         except Exception:
             return None
 

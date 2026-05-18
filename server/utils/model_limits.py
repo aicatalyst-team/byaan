@@ -25,12 +25,10 @@ MODEL_CONTEXT_LIMITS: dict[str, int] = {
     "gemini-3-pro": 2_000_000,
     "gemini-pro": 1_000_000,
     # xAI Grok
-    "grok-4": 128_000,
-    "grok-4-1-fast": 128_000,
+    "grok-4.3": 1_000_000,
+    "grok-4.20": 2_000_000,
     # Zhipu GLM
-    "glm-4.7": 128_000,
-    # Moonshot Kimi
-    "kimi-k2": 128_000,
+    "glm-5.1": 128_000,
     # Default fallback
     "default": 128_000,
 }

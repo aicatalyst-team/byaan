@@ -21,7 +21,7 @@ const Footer = () => {
           <nav className="footer-nav">
             <a href={sectionHref("features")}>Features</a>
             <a href={sectionHref("how-it-works")}>How it works</a>
-            <a href={sectionHref("self-host")}>Self-host</a>
+            <a href={sectionHref("self-host")}>Team Version</a>
             <a href="/docs">Docs</a>
             <a href={sectionHref("faq")}>FAQ</a>
             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">

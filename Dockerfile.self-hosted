@@ -2,11 +2,16 @@
 # Includes: PostgreSQL 15, Python backend, Caddy reverse proxy, built frontend
 
 # Stage 1: Frontend build
-FROM node:20-alpine AS frontend-builder
+# The frontend produces static assets, so build it on the native builder
+# platform to avoid QEMU crashes during arm64 dependency installation.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
 
 WORKDIR /build
 
-RUN npm install -g pnpm@10.10.0 || sleep 10 && npm install -g pnpm@10.10.0 || sleep 30 && npm install -g pnpm@10.10.0
+ARG VITE_IS_HOSTED
+ARG VITE_IS_SELF_HOSTED
+
+RUN (npm install -g pnpm@10.18.3) || (sleep 10 && npm install -g pnpm@10.18.3) || (sleep 30 && npm install -g pnpm@10.18.3)
 
 COPY client/package*.json client/pnpm-lock.yaml* client/.npmrc /build/client/
 WORKDIR /build/client
@@ -14,7 +19,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile || (sleep 15 && pnpm install --frozen-lockfile) || (sleep 30 && pnpm install --frozen-lockfile)
 
 COPY client/ /build/client/
-RUN pnpm build
+RUN pnpm exec vite --version && pnpm build
 
 # Stage 2: Python dependency build (runs in parallel with frontend-builder via BuildKit)
 FROM python:3.11-slim AS python-builder

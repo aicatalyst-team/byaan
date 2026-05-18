@@ -4073,6 +4073,27 @@ export class ApiService {
     }
   }
 
+  static async getTeamMemberStats(): Promise<any> {
+    try {
+      const tenantId = getActiveTenantId()
+      if (!tenantId) {
+        throw new Error('No active tenant')
+      }
+
+      const response = await apiFetch(`${API_BASE_URL}/tenants/${tenantId}/stats/members`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(extractErrorMessage(errorData) || 'Failed to fetch team stats')
+      }
+
+      const json = await response.json()
+      return json.data
+    } catch (error) {
+      console.error('Error fetching team stats:', error)
+      throw error
+    }
+  }
+
   static async getPendingInvitations(): Promise<any[]> {
     try {
       const tenantId = getActiveTenantId()

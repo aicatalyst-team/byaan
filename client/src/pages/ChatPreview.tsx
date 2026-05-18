@@ -4078,9 +4078,9 @@ Can you help me fix this query?`
                 </div>
               </div>
             }
-          defaultLeftWidth={25}
-          minLeftWidth={25}
-          maxLeftWidth={75}
+          defaultLeftWidth={34}
+          minLeftWidth={30}
+          maxLeftWidth={58}
         />
       </div>
 

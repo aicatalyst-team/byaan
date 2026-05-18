@@ -79,28 +79,20 @@ function SetupStepsAccordion({ callbackUrl }: { callbackUrl: string }) {
     },
     {
       id: 3,
-      title: 'Copy Client ID & Generate Client Secret',
+      title: 'Enable Device Flow & Copy Client ID',
       content: (
         <ul className="space-y-2 text-sm text-gray-400">
           <li className="flex items-start gap-2">
             <span className="text-gray-500 mt-0.5">•</span>
             <span>
-              Copy the <strong className="text-gray-300">"Client ID"</strong> from the app page
+              On the app page, check <strong className="text-gray-300">"Enable Device Flow"</strong> under Device Flow settings and save
             </span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-gray-500 mt-0.5">•</span>
             <span>
-              Click <strong className="text-gray-300">"Generate a new client secret"</strong>
+              Copy the <strong className="text-gray-300">"Client ID"</strong> and paste it in the field below
             </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-gray-500 mt-0.5">•</span>
-            <span>Copy the secret immediately (it won't be shown again)</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-gray-500 mt-0.5">•</span>
-            <span>Paste both values in the fields below</span>
           </li>
         </ul>
       ),

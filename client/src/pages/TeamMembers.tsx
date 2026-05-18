@@ -7,10 +7,10 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
-import { Trash2, Loader2, Search, UserPlus, RefreshCw, X, Shield, User, Crown, Copy, Check } from 'lucide-react'
+import { Trash2, Loader2, Search, UserPlus, RefreshCw, X, Shield, User, Crown, Copy, Check, BarChart3 } from 'lucide-react'
 import { ApiService } from '../services/api'
 import { copyToClipboard } from '../lib/tauri-api'
-import type { TenantMember, TenantInvitation, TenantRole } from '../types/team'
+import type { TenantMember, TenantInvitation, TenantRole, MemberStats, SlackStats } from '../types/team'
 import { useScopes } from '../hooks/useScopes'
 import { useInviteTeamMember, useResendInvitation, useCancelInvitation, useUpdateMemberRole, useRemoveMember } from '../hooks/useTeamManagement'
 
@@ -31,6 +31,7 @@ export default function TeamMembersPage() {
   const [showLinkDialog, setShowLinkDialog] = useState(false)
   const [generatedLink, setGeneratedLink] = useState('')
   const [linkCopied, setLinkCopied] = useState(false)
+  const [linkEmailSent, setLinkEmailSent] = useState<boolean | null>(null)
 
   // Data state
   const [members, setMembers] = useState<TenantMember[]>([])
@@ -40,7 +41,7 @@ export default function TeamMembersPage() {
 
   // Form state for invite dialog
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<TenantRole>('member')
+  const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
   const [inviteMessage, setInviteMessage] = useState('')
 
   // State for role update
@@ -59,6 +60,14 @@ export default function TeamMembersPage() {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Team Stats dialog state
+  const [showStatsDialog, setShowStatsDialog] = useState(false)
+  const [memberStats, setMemberStats] = useState<MemberStats[]>([])
+  const [slackStats, setSlackStats] = useState<SlackStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [statsSearch, setStatsSearch] = useState('')
 
   useEffect(() => {
     fetchData()
@@ -81,6 +90,22 @@ export default function TeamMembersPage() {
     }
   }
 
+  const handleOpenStats = async () => {
+    setShowStatsDialog(true)
+    setStatsSearch('')
+    setStatsError(null)
+    setStatsLoading(true)
+    try {
+      const data = await ApiService.getTeamMemberStats()
+      setMemberStats(data.items || [])
+      setSlackStats(data.slack || null)
+    } catch (err) {
+      setStatsError(err instanceof Error ? err.message : 'Failed to load team stats')
+    } finally {
+      setStatsLoading(false)
+    }
+  }
+
   const handleInviteMember = () => {
     if (!inviteEmail.trim()) return
 
@@ -99,6 +124,7 @@ export default function TeamMembersPage() {
           if (link) {
             setGeneratedLink(link)
             setLinkCopied(false)
+            setLinkEmailSent(response?.data?.email_sent ?? null)
             setShowLinkDialog(true)
           }
         },
@@ -176,6 +202,7 @@ export default function TeamMembersPage() {
         if (link) {
           setGeneratedLink(link)
           setLinkCopied(false)
+          setLinkEmailSent(response?.data?.email_sent ?? null)
           setShowLinkDialog(true)
         }
       },
@@ -193,6 +220,7 @@ export default function TeamMembersPage() {
       if (link) {
         setGeneratedLink(link)
         setLinkCopied(false)
+        setLinkEmailSent(response?.data?.email_sent ?? null)
         setShowLinkDialog(true)
       }
     } catch (err) {
@@ -340,15 +368,25 @@ export default function TeamMembersPage() {
           {/* Title and Button */}
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-2xl font-bold text-white tracking-tight">Team</h1>
-            <Button
-              onClick={() => setShowInviteDialog(true)}
-              variant="brand-primary"
-              disabled={inviteMutation.isPending || updateRoleMutation.isPending || removeMemberMutation.isPending || cancelInviteMutation.isPending}
-              className="font-medium px-5 py-2.5 rounded-md text-sm"
-            >
-              <UserPlus className="w-4 h-4 mr-2" />
-              Invite Member
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleOpenStats}
+                variant="outline"
+                className="font-medium px-5 py-2.5 rounded-md text-sm border-[#555555] text-white hover:bg-[#3a3a3a]"
+              >
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Team Stats
+              </Button>
+              <Button
+                onClick={() => setShowInviteDialog(true)}
+                variant="brand-primary"
+                disabled={inviteMutation.isPending || updateRoleMutation.isPending || removeMemberMutation.isPending || cancelInviteMutation.isPending}
+                className="font-medium px-5 py-2.5 rounded-md text-sm"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Invite Member
+              </Button>
+            </div>
           </div>
 
           {/* Search Bar */}
@@ -611,7 +649,7 @@ export default function TeamMembersPage() {
               <Label htmlFor="invite-role" className="text-white">
                 Role <span className="text-red-400">*</span>
               </Label>
-              <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as TenantRole)}>
+              <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as 'admin' | 'member')}>
                 <SelectTrigger className="mt-1 bg-[#1a1a1a] border-[#555555] text-white">
                   <SelectValue />
                 </SelectTrigger>
@@ -622,12 +660,8 @@ export default function TeamMembersPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-400 mt-1">
-                {inviteRole === 'owner'
-                  ? 'Full control over workspace and team'
-                  : inviteRole === 'admin'
+                {inviteRole === 'admin'
                   ? 'Can invite, remove members, and manage roles'
-                  : inviteRole === 'viewer'
-                  ? 'Can only view shared dashboards'
                   : 'Can view and collaborate on team content'}
               </p>
             </div>
@@ -855,6 +889,18 @@ export default function TeamMembersPage() {
               Share this link with the invitee. Expires in 7 days.
             </p>
 
+            {linkEmailSent === false && (
+              <div className="rounded-md border border-yellow-700/40 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-300">
+                Email was not sent — SMTP isn't configured on this server. Copy the link below
+                and share it directly with your teammate.
+              </div>
+            )}
+            {linkEmailSent === true && (
+              <div className="rounded-md border border-emerald-700/40 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-300">
+                Invite email sent. You can also copy the link below.
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Input
                 readOnly
@@ -878,6 +924,160 @@ export default function TeamMembersPage() {
                 Done
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Team Stats Dialog */}
+      <Dialog open={showStatsDialog} onOpenChange={setShowStatsDialog}>
+        <DialogContent className="max-w-4xl bg-[#2a2a2a] border-[#444444]">
+          <DialogHeader>
+            <DialogTitle className="text-white">Team Stats</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {statsError && (
+              <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-md text-sm">
+                {statsError}
+              </div>
+            )}
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Input
+                type="text"
+                placeholder="Search members..."
+                value={statsSearch}
+                onChange={(e) => setStatsSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-[#1a1a1a] border-[#555555] text-white placeholder-gray-500"
+              />
+            </div>
+
+            {statsLoading ? (
+              <div className="text-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto" />
+              </div>
+            ) : (
+              (() => {
+                const roleOrder: Record<string, number> = { owner: 0, admin: 1, member: 2, viewer: 3 }
+                const filtered = memberStats.filter((m) => {
+                  if (!statsSearch) return true
+                  const q = statsSearch.toLowerCase()
+                  return (
+                    (m.full_name?.toLowerCase().includes(q) ?? false) ||
+                    (m.email?.toLowerCase().includes(q) ?? false)
+                  )
+                })
+                const sorted = [...filtered].sort((a, b) => {
+                  const ra = roleOrder[a.role] ?? 99
+                  const rb = roleOrder[b.role] ?? 99
+                  if (ra !== rb) return ra - rb
+                  return b.notebooks_count - a.notebooks_count
+                })
+                const totals = sorted.reduce(
+                  (acc, m) => ({
+                    notebooks: acc.notebooks + m.notebooks_count,
+                    dashboards: acc.dashboards + m.dashboards_count,
+                    datasources: acc.datasources + m.datasources_count,
+                    queries: acc.queries + m.queries_count,
+                  }),
+                  { notebooks: 0, dashboards: 0, datasources: 0, queries: 0 }
+                )
+                const formatRole = (r: string) => r.charAt(0).toUpperCase() + r.slice(1)
+
+                if (sorted.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-gray-400 text-sm">
+                      No members found
+                    </div>
+                  )
+                }
+
+                return (
+                  <>
+                    <div className="overflow-x-auto max-h-[50vh] overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-sm table-fixed">
+                        <colgroup>
+                          <col style={{ width: '28%' }} />
+                          <col style={{ width: '12%' }} />
+                          <col style={{ width: '14%' }} />
+                          <col style={{ width: '12%' }} />
+                          <col style={{ width: '12%' }} />
+                          <col style={{ width: '12%' }} />
+                          <col style={{ width: '10%' }} />
+                        </colgroup>
+                        <thead className="sticky top-0 bg-[#2a2a2a]">
+                          <tr className="border-b border-[#444444] text-brand-orange text-left">
+                            <th className="py-3 px-3 font-medium">Name</th>
+                            <th className="py-3 px-3 font-medium">Role</th>
+                            <th className="py-3 px-3 font-medium">Joined</th>
+                            <th className="py-3 px-3 font-medium text-right">Notebooks</th>
+                            <th className="py-3 px-3 font-medium text-right">Dashboards</th>
+                            <th className="py-3 px-3 font-medium text-right">Datasources</th>
+                            <th className="py-3 px-3 font-medium text-right">Queries</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sorted.map((m) => (
+                            <tr key={m.member_id} className="border-b border-[#3a3a3a] text-gray-200">
+                              <td className="py-3 px-3">
+                                <div className="text-white truncate" title={m.full_name || m.email || ''}>
+                                  {m.full_name || m.email || 'Unknown'}
+                                </div>
+                                {m.full_name && m.email && (
+                                  <div className="text-xs text-gray-500 truncate" title={m.email}>
+                                    {m.email}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">{formatRole(m.role)}</td>
+                              <td className="py-3 px-3 text-gray-400">
+                                {m.joined_at ? formatTimeAgo(m.joined_at) : '—'}
+                              </td>
+                              <td className="py-3 px-3 text-right tabular-nums">{m.notebooks_count.toLocaleString()}</td>
+                              <td className="py-3 px-3 text-right tabular-nums">{m.dashboards_count.toLocaleString()}</td>
+                              <td className="py-3 px-3 text-right tabular-nums">{m.datasources_count.toLocaleString()}</td>
+                              <td className="py-3 px-3 text-right tabular-nums">{m.queries_count.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <table className="w-full text-sm table-fixed border-t-2 border-[#555555]">
+                      <colgroup>
+                        <col style={{ width: '28%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '14%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '10%' }} />
+                      </colgroup>
+                      <tbody>
+                        <tr className="text-white font-medium">
+                          <td className="py-3 px-3" colSpan={3}>Team total</td>
+                          <td className="py-3 px-3 text-right tabular-nums">{totals.notebooks.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-right tabular-nums">{totals.dashboards.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-right tabular-nums">{totals.datasources.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-right tabular-nums">{totals.queries.toLocaleString()}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </>
+                )
+              })()
+            )}
+
+            {!statsLoading && slackStats && (
+              <div className="border-t border-[#444444] pt-4 mt-2">
+                <div className="text-brand-orange text-sm font-medium mb-2">Slack Stats</div>
+                <div className="grid grid-cols-3 gap-4 text-sm text-gray-300">
+                  <span>Notebooks: <span className="text-white tabular-nums">{slackStats.notebooks_count.toLocaleString()}</span></span>
+                  <span>Dashboards: <span className="text-white tabular-nums">{slackStats.dashboards_count.toLocaleString()}</span></span>
+                  <span>Queries: <span className="text-white tabular-nums">{slackStats.queries_count.toLocaleString()}</span></span>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

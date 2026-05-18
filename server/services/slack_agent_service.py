@@ -17,7 +17,6 @@ from server.models.slack_conversation import SlackConversation
 from server.models.slack_event_log import SlackEventLog
 from server.models.slack_workspace import SlackWorkspace
 from server.repositories.custom_skill import CustomSkillRepository
-from server.repositories.notebooks import NotebookRepository
 from server.schemas.agent import AgentRequest
 from server.services.completion_service import CompletionService
 from server.services.crypto_service import CryptoService
@@ -207,24 +206,6 @@ class SlackAgentService:
                     notebook_id=conversation.notebook_id,
                     session=session,
                 )
-
-                # Send card with dashboard metadata
-                notebook_repo = NotebookRepository(session)
-                notebook = await notebook_repo.get(conversation.notebook_id)
-                if notebook:
-                    card_block = SlackBlockBuilder.card(
-                        title="✅ Dashboard Generated",
-                        body="Interactive dashboard ready to view. Screenshot and HTML file uploaded.",
-                    )
-
-                    logger.info(f"DEBUG BLOCKS: {json.dumps(card_block, indent=2)}")
-
-                    await slack_client.post_message(
-                        channel=channel_id,
-                        text="Dashboard ready!",
-                        thread_ts=response_ts,
-                        blocks=[card_block],
-                    )
 
             event_log.processing_status = "completed"
             await session.commit()
@@ -609,24 +590,6 @@ User's question:
                     notebook_id=notebook_uuid,
                     session=session,
                 )
-
-                # Send card with dashboard metadata
-                notebook_repo = NotebookRepository(session)
-                notebook = await notebook_repo.get(notebook_uuid)
-                if notebook:
-                    card_block = SlackBlockBuilder.card(
-                        title="✅ Dashboard Generated",
-                        body="Interactive dashboard ready to view. Screenshot and HTML file uploaded.",
-                    )
-
-                    logger.info(f"DEBUG BLOCKS (button handler): {json.dumps(card_block, indent=2)}")
-
-                    await slack_client.post_message(
-                        channel=channel_id,
-                        text="Dashboard ready!",
-                        thread_ts=thread_ts,
-                        blocks=[card_block],
-                    )
             else:
                 await slack_client.post_message(
                     channel=channel_id,

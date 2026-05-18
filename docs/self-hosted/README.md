@@ -95,15 +95,18 @@ When `DOMAIN` is set, Byaan automatically obtains SSL certificates from Let's En
 
 ### Google OAuth (Optional)
 
+Recommended for team deployments. Configure Google OAuth, then set `HIDE_EMAIL_AUTH=true` to make Google Sign-In the primary login path. Keep the master admin password as a break-glass credential.
+
 | Variable | Description |
 |----------|-------------|
 | `GOOGLE_CLIENT_ID` | Google OAuth Client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret |
 | `VITE_GOOGLE_CLIENT_ID` | Same as GOOGLE_CLIENT_ID (for frontend) |
+| `HIDE_EMAIL_AUTH` | Set to `true` to hide email/password login when Google OAuth is configured |
 
 ### Email/SMTP (Optional)
 
-Required for sending team invitations.
+Configures automatic email delivery for team invitations. **Without SMTP, invitations still work** — the admin copies the generated invitation link from the Members page and shares it manually. Configure SMTP only if you want invitation emails sent automatically.
 
 | Variable | Description |
 |----------|-------------|

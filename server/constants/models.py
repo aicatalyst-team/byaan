@@ -16,10 +16,9 @@ CLAUDE_CODE_MODELS = [
 ]
 
 OPENROUTER_SPECIFIC_MODELS = [
-    "google/gemini-3-pro-preview",
-    "x-ai/grok-4.1-fast",
-    "z-ai/glm-4.7",
-    "moonshotai/kimi-k2.5",
+    "x-ai/grok-4.3",
+    "x-ai/grok-4.20",
+    "z-ai/glm-5.1",
 ]
 
 # Azure and Bedrock models are user-provided (deployment-specific)
@@ -32,9 +31,8 @@ GROQ_MODELS = [
 ]
 
 XAI_MODELS = [
-    "xai/grok-4-1-fast-reasoning",
-    "xai/grok-code-fast-1",
-    "xai/grok-4-1-fast-non-reasoning",
+    "xai/grok-4.3",
+    "xai/grok-4.20",
 ]
 
 CODEX_MODELS = [
