@@ -26,104 +26,72 @@ export function ResizableSplitPanel({
   isRightPanelOpen = true,
 }: ResizableSplitPanelProps) {
   const [leftWidth, setLeftWidth] = useState(defaultLeftWidth)
-  const [isDragging, setIsDragging] = useState(false)
+  const isDraggingRef = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const rafIdRef = useRef<number | null>(null)
-  const pendingWidthRef = useRef<number | null>(null)
+  const leftPanelRef = useRef<HTMLDivElement>(null)
+  const rightPanelRef = useRef<HTMLDivElement>(null)
+  const currentWidthRef = useRef(defaultLeftWidth)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    setIsDragging(true)
+    isDraggingRef.current = true
+    if (leftPanelRef.current) leftPanelRef.current.style.transition = 'none'
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
   }, [])
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (!containerRef.current) return
+      if (!isDraggingRef.current || !containerRef.current) return
 
-      const container = containerRef.current
-      const containerRect = container.getBoundingClientRect()
+      const containerRect = containerRef.current.getBoundingClientRect()
       const mouseX = e.clientX - containerRect.left
       const newLeftWidth = (mouseX / containerRect.width) * 100
+      const clamped = Math.min(Math.max(newLeftWidth, minLeftWidth), maxLeftWidth)
 
-      // Clamp the width between min and max
-      const clampedWidth = Math.min(Math.max(newLeftWidth, minLeftWidth), maxLeftWidth)
+      currentWidthRef.current = clamped
 
-      // Store the pending width update
-      pendingWidthRef.current = clampedWidth
-
-      // Cancel any pending animation frame
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current)
-      }
-
-      rafIdRef.current = requestAnimationFrame(() => {
-        if (pendingWidthRef.current !== null) {
-          setLeftWidth(pendingWidthRef.current)
-          pendingWidthRef.current = null
-        }
-        rafIdRef.current = null
-      })
+      if (leftPanelRef.current) leftPanelRef.current.style.width = `${clamped}%`
     },
     [minLeftWidth, maxLeftWidth]
   )
 
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false)
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current)
-      rafIdRef.current = null
-    }
-    if (pendingWidthRef.current !== null) {
-      setLeftWidth(pendingWidthRef.current)
-      pendingWidthRef.current = null
-    }
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
+    if (leftPanelRef.current) leftPanelRef.current.style.transition = ''
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setLeftWidth(currentWidthRef.current)
   }, [])
 
   useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-        if (rafIdRef.current !== null) {
-          cancelAnimationFrame(rafIdRef.current)
-          rafIdRef.current = null
-        }
-      }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, handleMouseMove, handleMouseUp])
+  }, [handleMouseMove, handleMouseUp])
 
   return (
     <div ref={containerRef} className="flex h-full w-full relative">
-      {/* Left Panel */}
       <div
+        ref={leftPanelRef}
         style={{
           width: isRightPanelOpen ? `${leftWidth}%` : '100%',
-          transition: !isDragging ? 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-          willChange: isDragging ? 'width' : 'auto',
-          pointerEvents: isDragging ? 'none' : 'auto',
-          contain: isDragging ? 'layout style paint' : 'none',
+          transition: 'width 300ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}
         className="flex-shrink-0 h-full overflow-hidden"
       >
         {leftPanel}
       </div>
 
-      {/* Resizable Divider */}
       <div
         onMouseDown={handleMouseDown}
         style={{ display: isRightPanelOpen ? undefined : 'none' }}
-        className={`w-1 bg-[#2a2a2a] hover:bg-[#404040] cursor-col-resize flex-shrink-0 relative group ${
-          isDragging ? 'bg-[#4a9eff]' : 'transition-colors'
-        }`}
+        className="w-1 bg-[#2a2a2a] hover:bg-[#404040] active:bg-[#4a9eff] cursor-col-resize flex-shrink-0 relative group transition-colors"
       >
-        {/* Drag handle indicator */}
         <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1 group-hover:w-1 transition-all">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <div className="w-0.5 h-1 bg-gray-500 rounded-full"></div>
@@ -133,16 +101,14 @@ export function ResizableSplitPanel({
         </div>
       </div>
 
-      {/* Right Panel */}
       <div
+        ref={rightPanelRef}
         className="h-full overflow-hidden"
         style={{
           flex: isRightPanelOpen ? '1' : '0 0 0px',
           width: isRightPanelOpen ? undefined : 0,
           pointerEvents: isRightPanelOpen ? 'auto' : 'none',
-          transition: !isDragging ? 'flex 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-          willChange: isDragging ? 'width' : 'auto',
-          contain: isDragging ? 'layout style paint' : 'none',
+          transition: 'flex 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
         {rightPanel}
@@ -159,90 +125,63 @@ export function ResizableVerticalPanel({
   maxTopHeight = 70,
 }: ResizableVerticalPanelProps) {
   const [topHeight, setTopHeight] = useState(defaultTopHeight)
-  const [isDragging, setIsDragging] = useState(false)
+  const isDraggingRef = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const rafIdRef = useRef<number | null>(null)
-  const pendingHeightRef = useRef<number | null>(null)
+  const topPanelRef = useRef<HTMLDivElement>(null)
+  const currentHeightRef = useRef(defaultTopHeight)
 
-  // Sync height when defaultTopHeight changes
   useEffect(() => {
     setTopHeight(defaultTopHeight)
+    currentHeightRef.current = defaultTopHeight
   }, [defaultTopHeight])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    setIsDragging(true)
+    isDraggingRef.current = true
+    if (topPanelRef.current) topPanelRef.current.style.transition = 'none'
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
   }, [])
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (!containerRef.current) return
+      if (!isDraggingRef.current || !containerRef.current) return
 
-      const container = containerRef.current
-      const containerRect = container.getBoundingClientRect()
+      const containerRect = containerRef.current.getBoundingClientRect()
       const mouseY = e.clientY - containerRect.top
       const newTopHeight = (mouseY / containerRect.height) * 100
+      const clamped = Math.min(Math.max(newTopHeight, minTopHeight), maxTopHeight)
 
-      const clampedHeight = Math.min(Math.max(newTopHeight, minTopHeight), maxTopHeight)
+      currentHeightRef.current = clamped
 
-      pendingHeightRef.current = clampedHeight
-
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current)
-      }
-
-      rafIdRef.current = requestAnimationFrame(() => {
-        if (pendingHeightRef.current !== null) {
-          setTopHeight(pendingHeightRef.current)
-          pendingHeightRef.current = null
-        }
-        rafIdRef.current = null
-      })
+      if (topPanelRef.current) topPanelRef.current.style.height = `${clamped}%`
     },
     [minTopHeight, maxTopHeight]
   )
 
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false)
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current)
-      rafIdRef.current = null
-    }
-    if (pendingHeightRef.current !== null) {
-      setTopHeight(pendingHeightRef.current)
-      pendingHeightRef.current = null
-    }
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
+    if (topPanelRef.current) topPanelRef.current.style.transition = ''
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setTopHeight(currentHeightRef.current)
   }, [])
 
   useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = 'row-resize'
-      document.body.style.userSelect = 'none'
-
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-        if (rafIdRef.current !== null) {
-          cancelAnimationFrame(rafIdRef.current)
-          rafIdRef.current = null
-        }
-      }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, handleMouseMove, handleMouseUp])
+  }, [handleMouseMove, handleMouseUp])
 
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full relative">
       <div
-        style={{
-          height: `${topHeight}%`,
-          willChange: isDragging ? 'height' : 'auto',
-          pointerEvents: isDragging ? 'none' : 'auto',
-          contain: isDragging ? 'layout style paint' : 'none'
-        }}
+        ref={topPanelRef}
+        style={{ height: `${topHeight}%` }}
         className="flex-shrink-0 w-full overflow-hidden"
       >
         {topPanel}
@@ -250,9 +189,7 @@ export function ResizableVerticalPanel({
 
       <div
         onMouseDown={handleMouseDown}
-        className={`h-1 bg-[#232323] hover:bg-[#404040] cursor-row-resize flex-shrink-0 relative group ${
-          isDragging ? 'bg-[#4a9eff]' : 'transition-colors'
-        }`}
+        className="h-1 bg-[#232323] hover:bg-[#404040] active:bg-[#4a9eff] cursor-row-resize flex-shrink-0 relative group transition-colors"
       >
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 group-hover:h-1 transition-all">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -265,11 +202,6 @@ export function ResizableVerticalPanel({
 
       <div
         className="flex-1 w-full overflow-hidden"
-        style={{
-          willChange: isDragging ? 'height' : 'auto',
-          pointerEvents: isDragging ? 'none' : 'auto',
-          contain: isDragging ? 'layout style paint' : 'none'
-        }}
       >
         {bottomPanel}
       </div>
