@@ -30,7 +30,7 @@
 
 <p align="center">
   <video
-    src="https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/byaan-intro-video.mp4"
+    src="https://github.com/user-attachments/assets/b2ffe92e-99b6-4ad9-8337-8a199da7c81c"
     autoplay
     loop
     muted
