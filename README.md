@@ -44,6 +44,14 @@
 
 ## What is Byaan?
 
+Byaan is for teams and builders who want an AI analyst connected to their own data, not a generic chat box that forgets everything after each answer.
+
+Use Byaan to:
+
+- Ask questions across databases, files, and business context in plain English
+- Turn answers into inspectable queries, charts, dashboards, and scheduled reports
+- Let your data knowledge compound over time instead of rebuilding context in every conversation
+
 Most AI data tools fail for three reasons:
 
 1. **They lack business context.** What does "revenue" mean at your company? Which transactions to exclude? What's the fiscal year? Generic AI doesn't know.
@@ -56,6 +64,16 @@ The result is an agent that can accumulate your data's tribal knowledge instead 
 
 We believe your databases should stay private: on your laptop or within your organization's infrastructure. Byaan runs as a native Mac app or a self-hosted Docker container. In local and community deployments, Byaan connects directly to the model providers you configure instead of routing database traffic through Byaan-hosted infrastructure.
 
+## Privacy At A Glance
+
+| Deployment | Where Byaan runs | Auth | Best for | Internet exposure |
+| --- | --- | --- | --- | --- |
+| Mac App | Your Mac | Local app | Personal analysis | Not exposed |
+| Community Docker | Your machine/server | No built-in auth | Local single-user or trusted private network use | Do not expose directly |
+| Team Version | Your server/VPC | Users, invitations, RBAC | Teams and production use | Use HTTPS and least-privilege database users |
+
+In all modes, query results and relevant schema/context may be sent to the model provider you configure when an AI workflow needs model assistance. Database traffic is not routed through Byaan-hosted infrastructure in local desktop or community deployments.
+
 ## Key Features
 
 - **Multi-database support** — PostgreSQL, MongoDB, MySQL, SQLite, MSSQL, ODBC, plus CSV/Excel/Parquet/JSON file uploads
@@ -65,6 +83,7 @@ We believe your databases should stay private: on your laptop or within your org
 - **Bring Your Own Model** — Claude, OpenAI, Azure OpenAI, AWS Bedrock, Groq, OpenRouter, xAI
 - **Read-only guardrails** — explicit validation layers block known write operations across SQL, MongoDB, DynamoDB, and DuckDB flows
 - **MCP Server** — works with Claude Code, Cursor, and other MCP-compatible tools
+- **Shared team knowledge** — schema annotations, saved queries, metric definitions, and corrections compound across the workspace
 - **Dashboard exports** — standalone HTML dashboards, PDFs, or shareable links
 - **Secure API skills** — connect third-party APIs with built-in secrets management and domain whitelisting — the agent only calls endpoints you explicitly approve
 - **Scheduled queries** — automate recurring reports and analyses
@@ -78,15 +97,15 @@ We believe your databases should stay private: on your laptop or within your org
 
 | You want… | Use this |
 |---|---|
-| Byaan on my Mac, just for me | [Mac App](#mac-app) |
-| Byaan in Docker, single shared instance, no auth | [Community Version](#community-version) |
-| Byaan for my team — auth, RBAC, Slack, HTTPS | [Team Version](#team-version) ← most teams want this |
+| Personal use on a Mac, especially Apple Silicon | [Mac App](#mac-app) |
+| A local Docker instance for one person or a trusted private network | [Community Version](#community-version) |
+| A production deployment for a team with auth, RBAC, Slack, HTTPS, and shared organizational knowledge | [Team Version](#team-version) - most teams want this |
 
 ---
 
 ### Mac App
 
-Download Byaan for macOS from the [latest release](https://github.com/byaan-ai/byaan/releases) or from [byaan.ai](https://www.byaan.ai).
+For personal use on macOS, especially on Apple Silicon Macs, we recommend the native Mac app. Download it directly from [downloads.byaan.ai/stable/arm64/Byaan.dmg](https://downloads.byaan.ai/stable/arm64/Byaan.dmg), or visit [byaan.ai](https://www.byaan.ai) and click **Download for Mac**.
 
 Open the app, connect a database, and start asking questions. No account needed — configure your preferred LLM provider from within the app.
 
@@ -103,6 +122,8 @@ docker compose up -d
 ```
 
 Open http://localhost:17434 and start querying.
+
+The community version is intentionally simple and does not include built-in user authentication. Run it locally or behind your own private network controls. For an internet-facing deployment, use the [Team Version](#team-version).
 
 **Development**
 
@@ -141,7 +162,9 @@ If you use Claude Code, Cursor, Codex CLI, or Gemini CLI, run `/byaan:start` to 
   ></video>
 </p>
 
-The full multi-user deployment. One container ships PostgreSQL, the FastAPI backend, the React frontend, and Caddy. Live on port 8080 in five minutes.
+The full multi-user deployment for teams. One container ships PostgreSQL, the FastAPI backend, the React frontend, and Caddy. Live on port 8080 in five minutes.
+
+Team Version is where Byaan's learning loop becomes most valuable. Every teammate can contribute corrections, schema annotations, saved queries, dashboard patterns, metric definitions, and business rules. That shared context compounds across the workspace, so the agent gets better at your organization's data instead of forcing every person to teach it the same things again.
 
 **Requirements:** Linux server (Ubuntu 20.04+, Debian 11+, or any Docker-compatible OS), 2 GB RAM (4 GB recommended), 10 GB disk, Docker installed, ports 80/443 (or 8080) free.
 
@@ -161,6 +184,29 @@ ORG_NAME=YourCompany
 DOMAIN=app.yourcompany.com   # optional — enables Let's Encrypt HTTPS
 ```
 
+**Recommended auth setup:** for team deployments, configure Google SSO and hide email/password login. Keep the master admin password as a break-glass credential, but have teammates sign in with Google.
+
+Create a Google OAuth web client in Google Cloud Console, add your Byaan domain as an authorized JavaScript origin, then set:
+
+```bash
+GOOGLE_CLIENT_ID=<google-oauth-client-id>
+GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
+VITE_GOOGLE_CLIENT_ID=<same-google-oauth-client-id>
+HIDE_EMAIL_AUTH=true
+```
+
+To send invitation and password-reset emails automatically, configure SMTP:
+
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=admin@yourcompany.com
+SMTP_PASSWORD=<gmail-app-password-or-smtp-password>
+SMTP_FROM_EMAIL=admin@yourcompany.com
+SMTP_FROM_NAME=Byaan
+SMTP_USE_TLS=true
+```
+
 **3. Start:**
 
 ```bash
@@ -174,6 +220,9 @@ Open `http://your-server:8080` (or your `DOMAIN`). Sign in as the master admin y
 **What you get:**
 
 - Multi-user auth with invitations and RBAC roles (SMTP optional — share invitation links manually if email isn't configured)
+- Recommended Google-only sign-in for teams (`HIDE_EMAIL_AUTH=true` after Google OAuth is configured)
+- Shared workspace knowledge that compounds across teammates, databases, dashboards, and repeated analyses
+- Reusable metric definitions, saved queries, schema annotations, and business rules for the whole team
 - Slack integration — add `@byaan` to any channel, answers post in-thread
 - Optional Google OAuth SSO (drop in client ID + secret)
 - Automatic HTTPS via Let's Encrypt when `DOMAIN` is set
@@ -285,7 +334,7 @@ args = ["--directory", "<project_root>", "run", "python", "-m", "server.mcp.stdi
 
 ### Byaan Cloud (HTTP)
 
-For Byaan's managed cloud at analytics.byaan.ai (not the self-hosted team version), generate an MCP API key (Profile menu > MCP Keys) and use the HTTP endpoint:
+Byaan Cloud is optional and separate from the open-source desktop, community, and self-hosted team deployments. If you use the managed cloud at analytics.byaan.ai, generate an MCP API key (Profile menu > MCP Keys) and use the HTTP endpoint:
 
 | Mode                        | URL                                  |
 | --------------------------- | ------------------------------------ |
@@ -330,26 +379,6 @@ cd server && PYTHONPATH=..:tests uv run pytest
 # Run backend tests inside Docker
 docker compose exec server uv run pytest
 ```
-
-## Exporting Demo Notebooks
-
-Export existing notebooks from the database to seed new demo data:
-
-```bash
-# 1. Edit the NOTEBOOK_IDS array in the script with your notebook UUIDs
-#    Open: server/scripts/export_notebooks_to_demo.py
-#    Edit line 39: NOTEBOOK_IDS = ["your-notebook-uuid-here"]
-
-# 2. Activate the virtual environment
-source .venv/bin/activate
-
-# 3. Run the export script
-python3 server/scripts/export_notebooks_to_demo.py
-```
-
-This exports all notebook data (datasets, messages, queries, dashboards) into `server/example_data/demo_notebooks.json` and auto-increments the version. On app restart, the system will detect the version change and seed the updated notebooks.
-
-For detailed documentation, see: `server/scripts/README_EXPORT_NOTEBOOKS.md`
 
 ## Team Version Deployment
 
@@ -421,18 +450,17 @@ Every correction you make, every successful query, every annotation — it all f
 ### Deployment Modes
 
 ```
-Mac App       Tauri → React 19 + FastAPI + SQLite (all bundled, runs locally)
-Self-Hosted   Docker → Caddy + React 19 + FastAPI + PostgreSQL (single container)
-MCP Server    Any MCP client → Byaan API (ask_byaan tool over HTTP)
+Mac App            Tauri -> React 19 + FastAPI + SQLite (bundled, runs locally)
+Community Docker   Docker Compose -> React 19 + FastAPI + SQLite (local or trusted network)
+Team Version       Docker -> Caddy + React 19 + FastAPI + PostgreSQL (single-container team deployment)
+MCP                Claude Code, Cursor, Codex, and other MCP clients -> Byaan tools
 ```
 
 **Tech stack:** React 19 &middot; TypeScript &middot; FastAPI &middot; SQLAlchemy &middot; DuckDB &middot; Tauri &middot; Python 3.11+
 
 ### MCP Server
 
-Byaan exposes an `ask_byaan` MCP tool that lets external clients query your databases through the agent. Works with Claude Code, Cursor, and any MCP-compatible tool.
-
-Generate an API key in the app, add it to your MCP client config, and your IDE can query your databases through the same Byaan context layer.
+Byaan exposes MCP tools so Claude Code, Cursor, Codex, and other MCP-compatible clients can query databases through the same Byaan context layer. Use the setup examples in [MCP Integration](#mcp-integration-model-context-protocol).
 
 ## Environment Configuration
 
@@ -462,6 +490,8 @@ Contributions are welcome! Whether it's bug fixes, new features, documentation, 
 Look for issues labeled [`good first issue`](https://github.com/byaan-ai/byaan/labels/good%20first%20issue) if you're looking for a place to start.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+Contributor-only utilities, such as demo notebook export scripts, live under `server/scripts/`.
 
 ## Community
 
