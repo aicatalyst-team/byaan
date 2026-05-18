@@ -28,11 +28,16 @@
 
 <br />
 
-<!-- VIDEO PLACEHOLDER: drag-drop teaser.mp4 into a GitHub issue/PR comment, copy the
-     resulting https://github.com/user-attachments/assets/<uuid> URL, and replace this
-     block with: <video src="<URL>" controls autoplay muted loop playsinline width="800"></video> -->
 <p align="center">
-  <img src="assets/hero.png" alt="Byaan Dashboard" width="800" />
+  <video
+    src="https://pub-59163043d38c4f4585ca1d9b96d7b4ca.r2.dev/byaan-intro-video.mp4"
+    autoplay
+    loop
+    muted
+    playsinline
+    width="800"
+    poster="assets/hero.png"
+  ></video>
 </p>
 
 ---
