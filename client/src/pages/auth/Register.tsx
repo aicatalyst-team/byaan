@@ -9,7 +9,7 @@ export default function Register() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { register, googleLogin, authError, setAuthError, isLoading, isAuthenticated, fetchTenants, switchTenant } = useStore()
+  const { register, login, googleLogin, authError, setAuthError, isLoading, isAuthenticated, fetchTenants, switchTenant } = useStore()
 
   // Check if user is coming from an invitation
   const isFromInvitation = searchParams.get('from') === 'invitation'
@@ -141,20 +141,41 @@ export default function Register() {
     }
 
     try {
-      // If coming from invitation, use invitation registration endpoint
       if (isFromInvitation) {
         const invitationToken = localStorage.getItem('pendingInvitationToken')
         if (invitationToken) {
           await ApiService.authRegisterWithInvitation(email, password, fullName, invitationToken)
-          // Redirect to login (user is already verified, no email check needed)
-          navigate('/login?from=invitation', {
-            state: {
-              fromInvitationRegistration: true,
-              invitationEmail: email,
-              tenantName
+          setIsProcessingInvitation(true)
+          try {
+            await login(email, password)
+            const result = await ApiService.acceptInvitation(invitationToken)
+            localStorage.removeItem('pendingInvitationToken')
+            localStorage.removeItem('pendingInvitationTenantName')
+
+            if (result.tenant_id) {
+              localStorage.setItem('byaan_active_tenant', result.tenant_id)
+              await fetchTenants()
+              const updatedTenants = useStore.getState().tenants
+              if (updatedTenants.length === 1) {
+                setTimeout(() => navigate('/', { replace: true }), 0)
+              } else {
+                switchTenant(result.tenant_id)
+              }
             }
-          })
-          return
+            return
+          } catch (autoErr) {
+            console.error('Auto-login after invitation register failed:', autoErr)
+            navigate('/login?from=invitation', {
+              state: {
+                fromInvitationRegistration: true,
+                invitationEmail: email,
+                tenantName
+              }
+            })
+            return
+          } finally {
+            setIsProcessingInvitation(false)
+          }
         }
       }
 
@@ -215,23 +236,25 @@ export default function Register() {
             </div>
           )}
 
-          {/* Google Sign-In Button */}
-          <div className={features.local_auth_enabled ? (isFromInvitation ? "mb-4" : "mb-6") : ""}>
-            <GoogleSignInButton
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              disabled={isLoading || isGoogleLoading}
-            />
-          </div>
+          {features.google_oauth_enabled && (
+            <div className={features.local_auth_enabled ? (isFromInvitation ? "mb-4" : "mb-6") : ""}>
+              <GoogleSignInButton
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                disabled={isLoading || isGoogleLoading}
+              />
+            </div>
+          )}
 
           {features.local_auth_enabled && (
             <>
-              {/* Divider */}
-              <div className={`flex items-center ${isFromInvitation ? "mb-4" : "mb-6"}`}>
-                <div className="flex-1 border-t border-gray-200"></div>
-                <span className="px-4 text-sm text-gray-500">or</span>
-                <div className="flex-1 border-t border-gray-200"></div>
-              </div>
+              {features.google_oauth_enabled && (
+                <div className={`flex items-center ${isFromInvitation ? "mb-4" : "mb-6"}`}>
+                  <div className="flex-1 border-t border-gray-200"></div>
+                  <span className="px-4 text-sm text-gray-500">or</span>
+                  <div className="flex-1 border-t border-gray-200"></div>
+                </div>
+              )}
 
               {/* Register form */}
               <form onSubmit={handleSubmit}>

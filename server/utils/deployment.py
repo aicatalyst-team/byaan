@@ -19,21 +19,22 @@ if TYPE_CHECKING:
 
 
 def get_feature_flags() -> dict[str, bool]:
-    from server.utils.config_loader import should_hide_email_auth
+    from server.utils.config_loader import get_google_oauth_config, should_hide_email_auth
 
     self_hosted = is_self_hosted()
+    google_configured = bool(get_google_oauth_config().get("client_id"))
 
-    email_auth_enabled = not self_hosted
+    email_auth_enabled = (not self_hosted) or (not google_configured)
     if should_hide_email_auth():
         email_auth_enabled = False
 
     return {
-        "external_sharing_enabled": not self_hosted,  # Desktop/Community only
-        "notebook_import_enabled": False,  # Removed with SaaS
-        "public_registration_enabled": False,  # Removed with SaaS
+        "external_sharing_enabled": not self_hosted,
+        "notebook_import_enabled": False,
+        "public_registration_enabled": False,
         "local_auth_enabled": email_auth_enabled,
         "invitation_only": self_hosted,
-        "google_oauth_enabled": self_hosted,
+        "google_oauth_enabled": self_hosted and google_configured,
         "team_sharing_enabled": self_hosted,
         "enterprise_licensed": self_hosted,
     }
