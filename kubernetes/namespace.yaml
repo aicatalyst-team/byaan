@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: byaan
+  labels:
+    app.kubernetes.io/name: byaan
+    app.kubernetes.io/managed-by: autopoc
