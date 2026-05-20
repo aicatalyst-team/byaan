@@ -34,7 +34,7 @@ spec:
               value: "openai"
             - name: BYAAN_DEFAULT_LLM_MODEL
               value: "gpt-4o-mini"
-            # WORKER_URL pointing to itself (all-in-one container)
+            # WORKER_URL pointing to the internal backend (all-in-one container)
             - name: WORKER_URL
               value: "http://localhost:8000"
             # Sensitive environment variables from Secret
