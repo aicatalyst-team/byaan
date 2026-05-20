@@ -18,11 +18,11 @@ WORKDIR /build
 ARG VITE_IS_HOSTED
 ARG VITE_IS_SELF_HOSTED
 
-RUN (npm install -g pnpm@10.18.3) || (sleep 10 && npm install -g pnpm@10.18.3) || (sleep 30 && npm install -g pnpm@10.18.3)
+RUN npm install -g pnpm@10.18.3
 
-COPY client/package*.json client/pnpm-lock.yaml* client/.npmrc /build/client/
+COPY client/package*.json client/pnpm-lock.yaml* /build/client/
 WORKDIR /build/client
-RUN pnpm install --frozen-lockfile || (sleep 15 && pnpm install --frozen-lockfile) || (sleep 30 && pnpm install --frozen-lockfile)
+RUN pnpm install --frozen-lockfile
 
 COPY client/ /build/client/
 RUN pnpm exec vite --version && pnpm build
@@ -45,7 +45,6 @@ RUN dnf install -y \
     unixODBC-devel \
     && dnf clean all
 
-# Install uv from upstream container
 COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock /app/
@@ -61,25 +60,15 @@ FROM registry.access.redhat.com/ubi9/python-312
 USER 0
 WORKDIR /opt/app-root/src
 
-# ---------- Install EPEL for supervisor ----------------------------------------
+# ---------- Install EPEL + PostgreSQL 15 repo in one layer ---------------------
 RUN dnf install -y \
     https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
-    && dnf clean all
-
-# ---------- Install PostgreSQL 15 repo -----------------------------------------
-RUN dnf install -y \
     https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm \
+    && dnf config-manager --set-disabled pgdg14 pgdg16 pgdg17 pgdg18 || true \
+    && dnf remove -y libpq-devel || true \
     && dnf clean all
 
-# ---------- Disable all PGDG repos except pgdg15 to avoid conflicts ------------
-RUN dnf config-manager --set-disabled pgdg14 pgdg16 pgdg17 pgdg18 \
-    || true
-
-# ---------- Remove base-image libpq-devel to avoid conflicts with PGDG ---------
-RUN dnf remove -y libpq-devel || true
-
-# ---------- Install all runtime dependencies -----------------------------------
-# Use --allowerasing to let full curl replace curl-minimal from the base image
+# ---------- Install all runtime dependencies in a single layer -----------------
 RUN dnf install -y --allowerasing \
     libpq \
     curl \
@@ -129,7 +118,6 @@ COPY server/ /opt/app-root/src/server/
 RUN .venv/bin/python -m compileall -q /opt/app-root/src/server/ || true
 
 # ---------- Self-hosted config files -------------------------------------------
-
 RUN mkdir -p /etc/supervisor/conf.d /etc/caddy
 
 COPY docker/self-hosted/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -139,7 +127,7 @@ COPY docker/self-hosted/start-backend.sh /opt/app-root/src/start-backend.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh /opt/app-root/src/start-backend.sh
 
-# ---------- Adapt all paths for UBI layout -------------------------------------
+# ---------- Adapt all paths for UBI layout (single sed layer) ------------------
 
 # Patch entrypoint.sh:
 #   - PostgreSQL binaries: /usr/lib/postgresql/15/bin -> /usr/pgsql-15/bin
@@ -154,45 +142,29 @@ RUN sed -i \
     -e 's|/app/\.data|/opt/app-root/src/.data|g' \
     -e 's|/app/client|/opt/app-root/src/client|g' \
     -e 's|DOMAIN=":80"|DOMAIN=":8080"|g' \
-    /usr/local/bin/entrypoint.sh
-
-# Patch Caddyfile.template
-RUN sed -i \
+    /usr/local/bin/entrypoint.sh \
+    && sed -i \
     -e 's|/app/client/dist|/opt/app-root/src/client/dist|g' \
-    /etc/caddy/Caddyfile.template
-
-# Patch supervisord.conf for UBI paths
-RUN sed -i \
+    /etc/caddy/Caddyfile.template \
+    && sed -i \
     -e 's|/usr/lib/postgresql/15/bin/postgres|/usr/pgsql-15/bin/postgres|g' \
     -e 's|/app/start-backend.sh|/opt/app-root/src/start-backend.sh|g' \
     -e 's|directory=/app/server|directory=/opt/app-root/src/server|g' \
     -e 's|directory=/app|directory=/opt/app-root/src|g' \
     -e 's|PYTHONPATH="/app"|PYTHONPATH="/opt/app-root/src"|g' \
     -e 's|/usr/bin/caddy|/usr/local/bin/caddy|g' \
-    /etc/supervisor/conf.d/supervisord.conf
-
-# Patch start-backend.sh for UBI paths
-RUN sed -i \
+    /etc/supervisor/conf.d/supervisord.conf \
+    && sed -i \
     -e 's|cd /app/server|cd /opt/app-root/src/server|g' \
     -e 's|cd /app|cd /opt/app-root/src|g' \
     /opt/app-root/src/start-backend.sh
 
-# ---------- Create non-root user for backend -----------------------------------
+# ---------- Create users and directories (single layer) -----------------------
 
-RUN useradd --create-home --shell /bin/bash byaan
-
-# ---------- Ensure postgres user home directory exists -------------------------
-# PGDG packages create the 'postgres' user but the home may not be initialised;
-# su - postgres will fail without a valid home directory.
-RUN mkdir -p /var/lib/pgsql \
+RUN useradd --create-home --shell /bin/bash byaan \
+    && mkdir -p /var/lib/pgsql \
     && chown postgres:postgres /var/lib/pgsql \
     && usermod -d /var/lib/pgsql postgres 2>/dev/null || true
-
-# ---------- Create data and runtime directories --------------------------------
-# NOTE: Do NOT chown -R the .venv directory — it has thousands of files and
-# only needs to be world-readable.  The backend user "byaan" runs it but does
-# not need to own it.  The entrypoint runs as root and handles runtime chowns
-# for data directories.
 
 RUN mkdir -p /data/postgres /data/uploads /data/backups /data/logs \
     /data/claude /data/app_data/datasets \
@@ -243,7 +215,7 @@ VOLUME ["/data"]
 
 # This container requires root for PostgreSQL management (su - postgres, initdb,
 # chown) and Supervisor.  On OpenShift use the "anyuid" SCC.
-# The backend runs as unprivileged "byaan" user via Supervisor.
+# The backend process itself runs as unprivileged "byaan" user via Supervisor.
 # We do NOT set USER 1001 because the entrypoint needs root privileges.
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
