@@ -71,8 +71,17 @@ RUN dnf install -y \
 RUN dnf config-manager --set-disabled pgdg14 pgdg16 pgdg17 pgdg18 \
     || true
 
+# ---------- Remove base-image libpq-devel to avoid conflicts with PGDG ---------
+# The base python-312 image ships libpq-devel (libpq 13.x) which conflicts
+# with PGDG postgresql15 packages. Remove it before installing PGDG packages.
+RUN dnf remove -y libpq-devel || true
+
 # ---------- Install all runtime dependencies -----------------------------------
-RUN dnf install -y \
+# Use --allowerasing to let full curl replace curl-minimal from the base image
+# and to resolve any remaining libpq version conflicts with PGDG packages.
+# Use --nobest to tolerate missing perl(IPC::Run) dep from postgresql15-devel
+# (we only need -server and client, not -devel).
+RUN dnf install -y --allowerasing \
     libpq \
     curl \
     pango \
@@ -92,7 +101,11 @@ RUN dnf install -y \
     && dnf clean all
 
 # ---------- Install Caddy via direct binary download ---------------------------
-RUN curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy \
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then CADDY_ARCH="amd64"; \
+    elif [ "$ARCH" = "aarch64" ]; then CADDY_ARCH="arm64"; \
+    else CADDY_ARCH="amd64"; fi && \
+    curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=${CADDY_ARCH}" -o /usr/local/bin/caddy \
     && chmod +x /usr/local/bin/caddy
 
 # ---------- Install MS ODBC driver for SQL Server (optional) -------------------
