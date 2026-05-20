@@ -133,6 +133,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /opt/app-root/src/start-backend.sh
 #   - PostgreSQL binaries: /usr/lib/postgresql/15/bin -> /usr/pgsql-15/bin
 #   - App directory: /app -> /opt/app-root/src
 #   - Default port: 80 -> 8080 (OpenShift non-privileged)
+#   - Ensure /data subdirectories are created at runtime before chown
+#     (PVC mounts replace /data with an empty directory)
 RUN sed -i \
     -e 's|PG_BIN="/usr/lib/postgresql/15/bin"|PG_BIN="/usr/pgsql-15/bin"|g' \
     -e 's|/app/client/dist|/opt/app-root/src/client/dist|g' \
@@ -142,6 +144,7 @@ RUN sed -i \
     -e 's|/app/\.data|/opt/app-root/src/.data|g' \
     -e 's|/app/client|/opt/app-root/src/client|g' \
     -e 's|DOMAIN=":80"|DOMAIN=":8080"|g' \
+    -e 's|chown -R postgres:postgres /data/postgres|mkdir -p /data/postgres \&\& chown -R postgres:postgres /data/postgres|g' \
     /usr/local/bin/entrypoint.sh \
     && sed -i \
     -e 's|/app/client/dist|/opt/app-root/src/client/dist|g' \
@@ -215,7 +218,7 @@ VOLUME ["/data"]
 
 # This container requires root for PostgreSQL management (su - postgres, initdb,
 # chown) and Supervisor.  On OpenShift use the "anyuid" SCC.
-# The backend process itself runs as unprivileged "byaan" user via Supervisor.
+# The backend process itself runs as unprivileged user "byaan" via Supervisor.
 # We do NOT set USER 1001 because the entrypoint needs root privileges.
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
