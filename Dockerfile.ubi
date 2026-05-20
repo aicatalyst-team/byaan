@@ -1,0 +1,208 @@
+# All-in-one self-hosted Byaan container (UBI / OpenShift compatible)
+# Includes: PostgreSQL 15, Python backend, Caddy reverse proxy, built frontend
+
+# =============================================================================
+# Stage 1: Frontend build
+# =============================================================================
+FROM registry.access.redhat.com/ubi9/nodejs-22 AS frontend-builder
+
+USER 0
+WORKDIR /build
+
+ARG VITE_IS_HOSTED
+ARG VITE_IS_SELF_HOSTED
+
+RUN (npm install -g pnpm@10.18.3) || (sleep 10 && npm install -g pnpm@10.18.3) || (sleep 30 && npm install -g pnpm@10.18.3)
+
+COPY client/package*.json client/pnpm-lock.yaml* client/.npmrc /build/client/
+WORKDIR /build/client
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile || (sleep 15 && pnpm install --frozen-lockfile) || (sleep 30 && pnpm install --frozen-lockfile)
+
+COPY client/ /build/client/
+RUN pnpm exec vite --version && pnpm build
+
+# =============================================================================
+# Stage 2: Python dependency build
+# =============================================================================
+FROM registry.access.redhat.com/ubi9/python-312 AS python-builder
+
+USER 0
+WORKDIR /app
+
+RUN dnf install -y \
+    gcc \
+    gcc-c++ \
+    make \
+    libpq-devel \
+    libffi-devel \
+    python3.12-devel \
+    unixODBC-devel \
+    && dnf clean all
+
+# Install uv from upstream container
+COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /usr/local/bin/uv
+
+COPY pyproject.toml uv.lock /app/
+
+ENV UV_HTTP_TIMEOUT=300
+RUN --mount=type=cache,target=/root/.cache/uv \
+    UV_LINK_MODE=copy uv sync --frozen --no-install-project --python /usr/bin/python3.12
+
+# =============================================================================
+# Stage 3: Runtime image
+# =============================================================================
+FROM registry.access.redhat.com/ubi9/python-312
+
+USER 0
+WORKDIR /opt/app-root/src
+
+# ---------- Install EPEL for supervisor ----------------------------------------
+RUN dnf install -y \
+    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+    && dnf clean all
+
+# ---------- Install PostgreSQL 15 repo -----------------------------------------
+RUN dnf install -y \
+    https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm \
+    && dnf clean all
+
+# ---------- Install all runtime dependencies -----------------------------------
+RUN dnf install -y \
+    libpq \
+    curl \
+    pango \
+    gdk-pixbuf2 \
+    libffi-devel \
+    shared-mime-info \
+    cairo \
+    glib2 \
+    gnupg2 \
+    supervisor \
+    gettext \
+    openssl \
+    postgresql15-server \
+    postgresql15 \
+    unixODBC \
+    procps-ng \
+    && dnf clean all
+
+# ---------- Install Caddy via direct binary download ---------------------------
+RUN curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy \
+    && chmod +x /usr/local/bin/caddy
+
+# ---------- Install MS ODBC driver for SQL Server (optional) -------------------
+RUN curl -fsSL https://packages.microsoft.com/config/rhel/9/prod.repo > /etc/yum.repos.d/mssql-release.repo \
+    && ACCEPT_EULA=Y dnf install -y msodbcsql18 || true \
+    && dnf clean all
+
+# ---------- Install uv --------------------------------------------------------
+COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /usr/local/bin/uv
+
+# ---------- Copy built artifacts -----------------------------------------------
+
+# Copy pre-built frontend
+COPY --from=frontend-builder /build/client/dist /opt/app-root/src/client/dist
+
+# Copy pre-built Python venv and server code
+COPY --from=python-builder /app/.venv /opt/app-root/src/.venv
+COPY pyproject.toml uv.lock /opt/app-root/src/
+COPY server/ /opt/app-root/src/server/
+
+# Pre-compile Python bytecode
+RUN .venv/bin/python -m compileall -q /opt/app-root/src/server/ || true
+
+# ---------- Self-hosted config files -------------------------------------------
+
+# Create supervisor config directory (matching Debian convention used by entrypoint)
+RUN mkdir -p /etc/supervisor/conf.d /etc/caddy
+
+COPY docker/self-hosted/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/self-hosted/Caddyfile.template /etc/caddy/Caddyfile.template
+COPY docker/self-hosted/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY docker/self-hosted/start-backend.sh /opt/app-root/src/start-backend.sh
+
+RUN chmod +x /usr/local/bin/entrypoint.sh /opt/app-root/src/start-backend.sh
+
+# ---------- Adapt all paths for UBI layout -------------------------------------
+
+# Patch entrypoint.sh:
+#   - PostgreSQL binaries: /usr/lib/postgresql/15/bin -> /usr/pgsql-15/bin
+#   - App directory: /app -> /opt/app-root/src
+#   - Default port: 80 -> 8080 (OpenShift non-privileged)
+RUN sed -i \
+    -e 's|PG_BIN="/usr/lib/postgresql/15/bin"|PG_BIN="/usr/pgsql-15/bin"|g' \
+    -e 's| /app/client| /opt/app-root/src/client|g' \
+    -e 's|>/app/client|>/opt/app-root/src/client|g' \
+    -e 's| /app/server| /opt/app-root/src/server|g' \
+    -e 's| /app/start-backend.sh| /opt/app-root/src/start-backend.sh|g' \
+    -e 's| /app/\.data| /opt/app-root/src/.data|g' \
+    -e 's|"/app/\.data"|"/opt/app-root/src/.data"|g' \
+    -e 's|DOMAIN=":80"|DOMAIN=":8080"|g' \
+    /usr/local/bin/entrypoint.sh
+
+# Patch Caddyfile.template: /app/client/dist -> /opt/app-root/src/client/dist
+RUN sed -i \
+    -e 's|/app/client/dist|/opt/app-root/src/client/dist|g' \
+    /etc/caddy/Caddyfile.template
+
+# Patch supervisord.conf for UBI paths
+RUN sed -i \
+    -e 's|/usr/lib/postgresql/15/bin/postgres|/usr/pgsql-15/bin/postgres|g' \
+    -e 's|/app/start-backend.sh|/opt/app-root/src/start-backend.sh|g' \
+    -e 's|directory=/app/server|directory=/opt/app-root/src/server|g' \
+    -e 's|PYTHONPATH="/app"|PYTHONPATH="/opt/app-root/src"|g' \
+    -e 's|/usr/bin/caddy|/usr/local/bin/caddy|g' \
+    /etc/supervisor/conf.d/supervisord.conf
+
+# Patch start-backend.sh for UBI paths
+RUN sed -i \
+    -e 's|cd /app/server|cd /opt/app-root/src/server|g' \
+    /opt/app-root/src/start-backend.sh
+
+# ---------- Create non-root user for backend -----------------------------------
+
+RUN useradd --create-home --shell /bin/bash byaan
+
+# ---------- Create data and runtime directories --------------------------------
+
+RUN mkdir -p /data/postgres /data/uploads /data/backups /data/logs \
+    /home/byaan/.cache/uv \
+    /run/postgresql \
+    /var/run \
+    && chown -R postgres:postgres /run/postgresql \
+    && chown -R byaan:byaan /opt/app-root/src /data/uploads /data/backups /data/logs /home/byaan
+
+# ---------- Environment variables ----------------------------------------------
+
+ENV PYTHONPATH=/opt/app-root/src \
+    DATA_DIR=/data \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    APP_MODE=self-hosted \
+    BYAAN_DEFAULT_LLM_PROVIDER=openai \
+    BYAAN_DEFAULT_LLM_MODEL=gpt-4o-mini
+
+# ENCRYPTION_KEY and OPENAI_API_KEY must be provided at runtime via K8s secret/configmap
+
+# ---------- OpenShift compatibility --------------------------------------------
+# Group 0 permissions allow arbitrary UID execution in OpenShift.
+# The entrypoint.sh must run as root because it manages PostgreSQL
+# (su - postgres, initdb, etc.) and Supervisor. The backend itself
+# runs as the 'byaan' user via Supervisor configuration.
+
+RUN chgrp -R 0 /opt/app-root/src /data /etc/caddy /etc/supervisor \
+        /run/postgresql /var/run \
+    && chmod -R g=u /opt/app-root/src /data /etc/caddy /etc/supervisor \
+        /run/postgresql /var/run
+
+# Expose non-privileged HTTP port (Caddy reverse proxy)
+EXPOSE 8080
+
+# Volume for persistent data (PostgreSQL, uploads, backups)
+VOLUME ["/data"]
+
+# This all-in-one container requires root for PostgreSQL and Supervisor management.
+# The backend process runs as 'byaan' user via Supervisor.
+# For OpenShift: grant the ServiceAccount an SCC that allows root (e.g., anyuid).
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
