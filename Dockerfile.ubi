@@ -169,7 +169,6 @@ RUN sed -i \
     -e 's|directory=/app|directory=/opt/app-root/src|g' \
     -e 's|PYTHONPATH="/app"|PYTHONPATH="/opt/app-root/src"|g' \
     -e 's|/usr/bin/caddy|/usr/local/bin/caddy|g' \
-    -e 's|/usr/bin/supervisord|/usr/bin/supervisord|g' \
     /etc/supervisor/conf.d/supervisord.conf
 
 # Patch start-backend.sh for UBI paths
@@ -190,6 +189,10 @@ RUN mkdir -p /var/lib/pgsql \
     && usermod -d /var/lib/pgsql postgres 2>/dev/null || true
 
 # ---------- Create data and runtime directories --------------------------------
+# NOTE: Do NOT chown -R the .venv directory — it has thousands of files and
+# only needs to be world-readable.  The backend user "byaan" runs it but does
+# not need to own it.  The entrypoint runs as root and handles runtime chowns
+# for data directories.
 
 RUN mkdir -p /data/postgres /data/uploads /data/backups /data/logs \
     /data/claude /data/app_data/datasets \
@@ -198,8 +201,9 @@ RUN mkdir -p /data/postgres /data/uploads /data/backups /data/logs \
     /var/run/supervisor \
     /var/log/supervisor \
     && chown -R postgres:postgres /data/postgres /run/postgresql \
-    && chown -R byaan:byaan /opt/app-root/src /data/uploads /data/backups \
-       /data/logs /data/claude /data/app_data /home/byaan
+    && chown -R byaan:byaan /data/uploads /data/backups \
+       /data/logs /data/claude /data/app_data /home/byaan \
+    && chmod -R a+rX /opt/app-root/src
 
 # ---------- Environment variables ----------------------------------------------
 
@@ -215,13 +219,19 @@ ENV PYTHONPATH=/opt/app-root/src \
 
 # ---------- OpenShift compatibility --------------------------------------------
 # Group 0 (root group) permissions enable arbitrary UID support.
-# chmod g=u on /etc/passwd allows NSS wrapper for arbitrary UIDs.
+# Apply g=u selectively — avoid recursing into the massive .venv tree.
 
-RUN chgrp -R 0 /opt/app-root/src /data /etc/caddy /etc/supervisor \
-        /run/postgresql /var/run /var/log/supervisor \
+RUN chgrp -R 0 /opt/app-root/src/server /opt/app-root/src/client \
+        /opt/app-root/src/start-backend.sh \
+        /opt/app-root/src/pyproject.toml /opt/app-root/src/uv.lock \
+        /data /etc/caddy /etc/supervisor \
+        /run/postgresql /var/run/supervisor /var/log/supervisor \
         /home/byaan /var/lib/pgsql \
-    && chmod -R g=u /opt/app-root/src /data /etc/caddy /etc/supervisor \
-        /run/postgresql /var/run /var/log/supervisor \
+    && chmod -R g=u /opt/app-root/src/server /opt/app-root/src/client \
+        /opt/app-root/src/start-backend.sh \
+        /opt/app-root/src/pyproject.toml /opt/app-root/src/uv.lock \
+        /data /etc/caddy /etc/supervisor \
+        /run/postgresql /var/run/supervisor /var/log/supervisor \
         /home/byaan /var/lib/pgsql \
     && chmod g=u /etc/passwd
 
@@ -234,7 +244,6 @@ VOLUME ["/data"]
 # This container requires root for PostgreSQL management (su - postgres, initdb,
 # chown) and Supervisor.  On OpenShift use the "anyuid" SCC.
 # The backend runs as unprivileged "byaan" user via Supervisor.
-RUN chgrp -R 0 /opt/app-root/src/node_modules && chmod -R g=u /opt/app-root/src/node_modules || true
-USER 1001
+# We do NOT set USER 1001 because the entrypoint needs root privileges.
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
