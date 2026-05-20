@@ -67,6 +67,10 @@ RUN dnf install -y \
     https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm \
     && dnf clean all
 
+# ---------- Disable all PGDG repos except pgdg15 to avoid conflicts ------------
+RUN dnf config-manager --set-disabled pgdg14 pgdg16 pgdg17 pgdg18 \
+    || true
+
 # ---------- Install all runtime dependencies -----------------------------------
 RUN dnf install -y \
     libpq \
